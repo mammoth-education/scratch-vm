@@ -27,15 +27,11 @@ class WebBle {
         this._devices = {};
         this._bleServer = null;
 
-        // let services = [];
-        // let filters = peripheralOptions.filters
-        // for (let i = 0; i < filters.length; i++) {
-        //     services = services.concat(filters[i].services);
-        // }
-        // services = services.concat(peripheralOptions.optionalServices);
-        // console.log("Services: ", services);
-        console.log("Peripheral Options: ", peripheralOptions);
         navigator.bluetooth.requestDevice(peripheralOptions).then(this._onDiscoverDevice, this._onScanError);
+
+        // 现在notify不支持，左移写一个定时器，每隔一段时间读取一次，来模拟notify
+        this._onCharacteristicChangedCallbacks = {};
+        this._onCharacteristicChangedTimer = null;
     }
 
     /**
@@ -68,20 +64,31 @@ class WebBle {
      * @param {number} id - the id of the peripheral to connect to
      */
     connectPeripheral = (id) => {
-        console.log("connectPeripheral: ", id);
         let onConnected = (server) => {
-            console.log("connected");
             this._bleServer = server;
             this._connected = true;
             this._deviceId = id;
             this._runtime.emit(this._runtime.constructor.PERIPHERAL_CONNECTED);
             this._connectCallback();
+            // 现在notify不支持，左移写一个定时器，每隔一段时间读取一次，来模拟notify
+            this._onCharacteristicChangedTimer = setInterval(() => {
+                for (let service in this._onCharacteristicChangedCallbacks) {
+                    for (let characteristic in this._onCharacteristicChangedCallbacks[service]) {
+                        this.read(service, characteristic).then((data) => {
+                            for (let callback of this._onCharacteristicChangedCallbacks[service][characteristic]) {
+                                callback(data);
+                            }
+                        });
+                    }
+                }
+            }, 100);
         }
-        let onDisconnected = () => {
-            console.log("onDisconnected");
-            this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
-        }
-        this._devices[id].gatt.connect().then(onConnected, onDisconnected);
+        // let onDisconnected = () => {
+        //     console.log("onDisconnected");
+        //     this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
+        // }
+        this._devices[id].addEventListener('gattserverdisconnected', this._handleDisconnectError);
+        this._devices[id].gatt.connect().then(onConnected, this._handleError);
     }
 
     /**
@@ -94,6 +101,8 @@ class WebBle {
         if (this.isConnected()) {
             this._bleServer.disconnect();
         }
+        this._onCharacteristicChangedCallbacks = {};
+        clearInterval(this._onCharacteristicChangedTimer);
         this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
     }
 
@@ -117,18 +126,28 @@ class WebBle {
      */
     startNotifications = (serviceId, characteristicId, onCharacteristicChanged = null) => {
         return new Promise((resolve, reject) => {
-            console.log("startNotifications: ", this, serviceId, characteristicId);
-
-            this._bleServer.getPrimaryService(serviceId).then(service => {
-                service.getCharacteristic(characteristicId).then(characteristic => {
-                    characteristic.startNotifications().then(() => {
-                        if (onCharacteristicChanged) {
-                            characteristic.addEventListener('oncharacteristicvaluechanged', onCharacteristicChanged);
-                            resolve();
-                        }
-                    }, reject);
-                }, reject);
-            }, reject);
+            // 现在notify不支持，左移写一个定时器，每隔一段时间读取一次，来模拟notify
+            // 正常做法
+            // this._bleServer.getPrimaryService(serviceId).then(service => {
+            //     service.getCharacteristic(characteristicId).then(characteristic => {
+            //         characteristic.startNotifications().then(() => {
+            //             if (onCharacteristicChanged) {
+            //                 characteristic.addEventListener('oncharacteristicvaluechanged', onCharacteristicChanged);
+            //                 resolve();
+            //             }
+            //         }, reject);
+            //     }, reject);
+            // }, reject);
+            // 模拟notify
+            if (!this._onCharacteristicChangedCallbacks[serviceId]) {
+                this._onCharacteristicChangedCallbacks[serviceId] = {};
+            }
+            if (!this._onCharacteristicChangedCallbacks[serviceId][characteristicId]) {
+                this._onCharacteristicChangedCallbacks[serviceId][characteristicId] = [];
+            }
+            if (onCharacteristicChanged) {
+                this._onCharacteristicChangedCallbacks[serviceId][characteristicId].push(onCharacteristicChanged);
+            }
         });
     }
 
@@ -141,16 +160,15 @@ class WebBle {
      * @return {Promise} - a promise from the remote read request.
      */
     read = (serviceId, characteristicId, optStartNotifications = false, onCharacteristicChanged = null) => {
-        return new Promise((resolve, reject) => {
-            console.log("read: ", serviceId, characteristicId);
+        return new Promise((resolve) => {
             this._bleServer.getPrimaryService(serviceId).then(service => {
                 service.getCharacteristic(characteristicId).then(characteristic => {
                     if (optStartNotifications) {
                         this.startNotifications(serviceId, characteristicId, onCharacteristicChanged);
                     }
-                    characteristic.readValue().then(resolve, reject);
-                }, reject);
-            }, reject);
+                    characteristic.readValue().then(resolve, this._handleDisconnectError);
+                }, this._handleDisconnectError);
+            }, this._handleDisconnectError);
         });
     }
 
@@ -163,24 +181,44 @@ class WebBle {
      * @return {Promise} - a promise from the remote send request.
      */
     write = (serviceId, characteristicId, message, withResponse = null) => {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             let data = Uint8Array.from(message);
             this._bleServer.getPrimaryService(serviceId).then(service => {
                 service.getCharacteristic(characteristicId).then(characteristic => {
                     if (withResponse) {
-                        characteristic.writeValueWithResponse(data.buffer).then(resolve, reject);
+                        characteristic.writeValueWithResponse(data.buffer).then(resolve, this._handleDisconnectError);
                     } else {
-                        characteristic.writeValueWithoutResponse(data.buffer).then(resolve, reject);
+                        characteristic.writeValueWithoutResponse(data.buffer).then(resolve, this._handleDisconnectError);
                     }
-                }, reject);
-            }, reject);
+                }, this._handleDisconnectError);
+            }, this._handleDisconnectError);
+        });
+    }
+
+    _handleDisconnectError = (e) => {
+        if (!this._connected) return;
+        // ignore: GATT operation already in progress.
+        if (e.code === 19) {
+            return;
+        }
+        console.log("_handleDisconnectError", e);
+
+        this.disconnect();
+
+        if (this._resetCallback) {
+            this._resetCallback();
+        }
+
+        this._runtime.emit(this._runtime.constructor.PERIPHERAL_CONNECTION_LOST_ERROR, {
+            message: `Lost connection to`,
+            extensionId: this._extensionId
         });
     }
 
     _handleError = (e) => {
         console.log(e);
         this._runtime.emit(this._runtime.constructor.PERIPHERAL_REQUEST_ERROR, {
-            message: `Scratch lost connection to`,
+            message: `Lost connection to`,
             extensionId: this._extensionId
         });
     }

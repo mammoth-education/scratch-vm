@@ -1,7 +1,8 @@
 const ArgumentType = require('../../extension-support/argument-type');
 const BlockType = require('../../extension-support/block-type');
 const formatMessage = require('format-message');
-const RateLimiter = require('../../util/rateLimiter.js');
+const Cast = require('../../util/cast');
+const MathUtil = require('../../util/math-util');
 
 let BLE = null;
 if (window.cordova) {
@@ -14,6 +15,13 @@ if (window.cordova) {
     console.log("BLE: scratch ble");
     BLE = require('../../io/ble');
 }
+
+const DeviceSettings = {
+    AnalogResolution: 10,
+    PWMResolution: 8,
+}
+DeviceSettings.PWMMax = 2 ** DeviceSettings.PWMResolution - 1;
+DeviceSettings.AnalogMax = 2 ** DeviceSettings.AnalogResolution - 1;
 
 /**
  * Icon svg to be displayed at the left edge of each extension block, encoded as a data URI.
@@ -54,16 +62,11 @@ const BLECharacteristic = {
 };
 
 /**
- * A time interval to wait (in milliseconds) while a block that sends a BLE message is running.
- * @type {number}
+ * Device Actions
  */
-const BLESendInterval = 100;
-
-/**
- * A maximum number of BLE message sends per second, to be enforced by the rate limiter.
- * @type {number}
- */
-const BLESendRateMax = 20;
+const DeviceAction = {
+    CHANGE_NAME: 0x01,
+};
 
 /**
  * Enum for Kaka sensor and output types.
@@ -72,11 +75,10 @@ const BLESendRateMax = 20;
  */
 const KakaDevice = {
     Motor: 1,
-    PowerMotor: 2,
     Buzzer: 3,
     LED: 4,
     Servo: 5,
-    Microphone: 6,
+    Sound: 6,
     Button: 7,
     SegmentDisplay: 8,
     ColorSensor: 9,
@@ -86,26 +88,71 @@ const KakaDevice = {
     Digital: 13,
     Analog: 14,
     PWM: 15,
+    LTMotor: 16,
 };
 
-const KakaVariableType = {
-    Boolean: 1,
-    Number: 2,
-    String: 3,
+const KakaAction = {
+    DigitalOutput: 1,
+    DigitalInput: 2,
+    PWMPulseWidthPercent: 3,
+    PWMFrequency: 4,
+    AnalogInput: 5,
+    BuzzerPlayTone: 6,
+    BuzzerStop: 7,
+    BuzzerPlayToneFor: 8,
+    UltrasonicGetDistance: 9,
+    SegmentDisplayShowValue: 10,
+    SegmentDisplayClear: 11,
+    ColorSensorGetColor: 12,
+    MotorSetStatus: 13,
+    ServoSetAngle: 14,
+    LTMotorSetValue: 15,
+    GetSoundLevel: 16,
 }
 
-const KakaOutputAction = {
-    BuzzerPlayTone: 1,
-    BuzzerStop: 2,
-    BuzzerPlayToneFor: 3,
-    Digital: 4,
-    PWM: 6,
-}
+const ColorSensorColors = [
+    formatMessage({
+        id: 'kaka.colorSensor.red',
+        default: 'Red',
+        description: 'Red color'
+    }),
+    formatMessage({
+        id: 'kaka.colorSensor.orange',
+        default: 'Orange',
+        description: 'Orange color'
+    }),
+    formatMessage({
+        id: 'kaka.colorSensor.yellow',
+        default: 'Yellow',
+        description: 'Yellow color'
+    }),
+    formatMessage({
+        id: 'kaka.colorSensor.green',
+        default: 'Green',
+        description: 'Green color'
+    }),
+    formatMessage({
+        id: 'kaka.colorSensor.cyan',
+        default: 'Cyan',
+        description: 'Cyan color'
+    }),
+    formatMessage({
+        id: 'kaka.colorSensor.blue',
+        default: 'Blue',
+        description: 'Blue color'
+    }),
+    formatMessage({
+        id: 'kaka.colorSensor.purple',
+        default: 'Purple',
+        description: 'Purple color'
+    }),
+    formatMessage({
+        id: 'kaka.colorSensor.magenta',
+        default: 'Magenta',
+        description: 'Magenta color'
+    }),
+];
 
-const KakaInputMode = {
-    Digital: 1,
-    Analog: 2,
-}
 
 /**
  * Manage communication with a Kaka peripheral over a Bluetooth Low Energy client socket.
@@ -113,7 +160,6 @@ const KakaInputMode = {
 class Kaka {
 
     constructor(runtime, extensionId) {
-
         /**
          * The Scratch 3.0 runtime used to trigger the green flag button.
          * @type {Runtime}
@@ -135,25 +181,72 @@ class Kaka {
         this._ble = null;
         this._runtime.registerPeripheralExtension(extensionId, this);
 
-        /**
-         * A rate limiter utility, to help limit the rate at which we send BLE messages
-         * over the socket to Scratch Link to a maximum number of sends per second.
-         * @type {RateLimiter}
-         * @private
-         */
-        this._rateLimiter = new RateLimiter(BLESendRateMax);
-
-        /**
-         * An interval id for the battery check interval.
-         * @type {number}
-         * @private
-         */
-
         this.reset = this.reset.bind(this);
         this._onConnect = this._onConnect.bind(this);
         this._onMessage = this._onMessage.bind(this);
 
+        // 读回输入值的缓冲区
         this._valuebuffer = {};
+        // 设备id记录
+        this._deviceId = 0;
+        // 已注册的设备{deviceId: {name: "name", device: KakaDevice, pins: []}}
+        this._devices = {};
+        this._lastButtonState = {
+            0: 1,
+            5: 1,
+        };
+
+        this.soundLevel = 0;
+        this.buttonEvent = {};
+        this.stopDevice = {};
+        this.stopDevice[KakaDevice.Motor] = this.stopMotor;
+        this.stopDevice[KakaDevice.Buzzer] = this.stopBuzzer;
+        this.stopDevice[KakaDevice.LTMotor] = this.stopLTMotor;
+        this.stopDevice[KakaDevice.SegmentDisplay] = this.stopSegmentDisplay;
+    }
+
+    /**
+     * Change device name
+     * @param {string} name - the name to change.
+     */
+    changeDeviceName(name) {
+        return this._ble.write(BLEService.DEVICE_SERVICE, BLECharacteristic.ATTACHED_IO, [DeviceAction.CHANGE_NAME, name.length, ...name.split('').map(c => c.charCodeAt(0))]);
+    }
+
+    /**
+     * Stop Motor
+     * @param {Object} device - the device object to stop. see this._devices 
+     */
+    stopMotor(device) {
+        let pin = device.pins[0];
+        this.setMotorStatus(pin, 0);
+    }
+
+    /**
+     * Stop Buzzer
+     */
+    stopBuzzer() {
+        this.buzzerStop();
+    }
+
+    /**
+     * Stop LT Motor
+     * @param {Object} device - the device object to stop. see this._devices 
+     */
+    stopLTMotor(device) {
+        let pinA = device.pins[0];
+        let pinB = device.pins[1];
+        this.setLTMotorValue(pinA, pinB, 0);
+    }
+
+    /**
+     * Stop Segment Display
+     * @param {Object} device - the device object to stop. see this._devices
+     */
+    stopSegmentDisplay(device) {
+        let dio = device.pins[0];
+        let clk = device.pins[1];
+        this.segmentDisplayClear(dio, clk);
     }
 
     /**
@@ -161,7 +254,13 @@ class Kaka {
      */
     stopAll() {
         if (!this.isConnected()) return;
-        this.buzzerStop();
+        for (const deviceId in this._devices) {
+            let device = this._devices[deviceId];
+            if (this.stopDevice[device.device]) {
+                this.stopDevice[device.device](device);
+            }
+        }
+        this.reset();
     }
 
     /**
@@ -200,11 +299,14 @@ class Kaka {
         this.reset();
     }
 
+
     /**
      * Reset all the state and timeout/interval ids.
      */
     reset() {
         this._valuebuffer = {};
+        this._deviceId = 0;
+        this._devices = {};
     }
 
     /**
@@ -226,12 +328,8 @@ class Kaka {
      * @param {boolean} [useLimiter=true] - if true, use the rate limiter
      * @return {Promise} - a promise result of the write operation
      */
-    send(uuid, message, useLimiter = true) {
+    send(uuid, message) {
         if (!this.isConnected()) return Promise.resolve();
-
-        if (useLimiter) {
-            if (!this._rateLimiter.okayToSend()) return Promise.resolve();
-        }
 
         return this._ble.write(
             BLEService.IO_SERVICE,
@@ -247,18 +345,22 @@ class Kaka {
      * This sends a command to the Kaka to actuate the specified outputs.
      *
      * @param  {number} device       - the device to send a command to, see KakaDevice.
-     * @param  {number} pin          - the pin of the device is connected to, see KakaPort.
-     * @param  {number} action       - the action of the device, see KakaOutputAction.
-     * @param  {number} variableType - the variable type of the command, see KakaVariableType.
+     * @param  {number} id           - the id of the input sensor.
+     * @param  {array}  pins         - the pins of the device is connected to.
+     * @param  {number} action       - the action of the device, see KakaAction.
      * @param  {array}  values       - the list of values to write to the command.
      * @return {array}               - a generated output command.
      */
-    generateOutputCommand(device, pin, action, variableType = null, values = null,) {
-        let command = [device, pin, action, variableType];
-        if (values) {
-            command.push(values.length);
-            command = command.concat(values);
-        }
+    generateOutputCommand(device, id, action, pins, values = null,) {
+        let command = [
+            device,
+            id,
+            action,
+            pins.length,
+            ...pins,
+            values.length,
+            ...values,
+        ];
         return command;
     }
 
@@ -271,19 +373,19 @@ class Kaka {
      * of the specified inputs and sets value change notifications.
      *
      * @param  {number}  device              - the device of input sensor, see KakaDevices.
-     * @param  {number}  pin                 - the pin of the input sensor.
-     * @param  {number}  mode                - the mode of the input sensor, see KakaInputMode.
-     * @param  {boolean} enableNotifications - whether to enable notifications.
+     * @param  {number}  id                  - the id of the input sensor.
+     * @param  {number}  action              - the action of the device, see KakaAction.
+     * @param  {array}   pins                - the pins of the input sensor.
      * @return {array}                       - a generated input command.
      */
-    generateInputCommand(device, pin, mode, enableNotifications = false) {
-        const command = [
+    generateInputCommand(device, id, action, pins) {
+        return [
             device,
-            pin,
-            mode,
-            enableNotifications ? 1 : 0
+            id,
+            action,
+            pins.length,
+            ...pins,
         ];
-        return command;
     }
 
     /**
@@ -292,11 +394,11 @@ class Kaka {
      */
     _onConnect() {
         console.log("kaka/index.js onConnected");
-        this._ble.startNotifications(
-            BLEService.IO_SERVICE,
-            BLECharacteristic.INPUT_VALUES,
-            onCharacteristicChanged = null
-        );
+        // this._ble.startNotifications(
+        //     BLEService.IO_SERVICE,
+        //     BLECharacteristic.INPUT_VALUES,
+        //     this._onMessage
+        // );
     }
 
     /**
@@ -305,7 +407,127 @@ class Kaka {
      * @private
      */
     _onMessage(data) {
-        console.log(data)
+        let arraybuffer = data.buffer;
+        let uint8buffer = new Uint8Array(arraybuffer);
+        let id = uint8buffer[0];
+        let valueLength = uint8buffer[1];
+        let value = uint8buffer.slice(2, 2 + valueLength);
+        // console.log(`device: ${device}, id: ${id}, value: ${value}`);
+        this._devices[id].value = value;
+    }
+
+    /**
+     * Register a device to the Kaka peripheral.
+     * @param {number} device   device identifier, see KakaDevice
+     * @param {array}  pins     pins of the device
+     * @returns {array}         device id and status of registered, true: register success
+     */
+    _registerDevice(device, pins) {
+        let name = `device${device}_${pins}`;
+        let id = null;
+        if (this._isDeviceRegistered(name)) {
+            id = this._getDeviceId(name);
+        } else {
+            id = this._deviceId++;
+            this._devices[id] = {
+                device: device,
+                name: name,
+                value: null,
+            };
+        }
+        return id;
+    }
+
+    /**
+     * Checkt if the device is registered by name.
+     * @param {number} device   device identifier, see KakaDevice
+     * @returns {boolean}       true if the device is connected
+     */
+    _isDeviceRegistered(name) {
+        let registered = false;
+        for (let id in this._devices) {
+            if (this._devices[id].name === name) {
+                registered = true;
+                break;
+            }
+        }
+        return registered;
+    }
+
+    /**
+     * Get device id by name.
+     * @param {number} device   device identifier, see KakaDevice
+     * @returns {number}        id of the device
+     */
+    _getDeviceId(name) {
+        let id = null;
+        for (let key in this._devices) {
+            if (this._devices[key].name === name) {
+                id = Cast.toNumber(key);
+                break;
+            }
+        }
+        return id;
+    }
+
+    /**
+     * Input device read function.
+     * @param {number}  device    device identifier, see KakaDevice
+     * @param {array}   pins      pins of the device
+     * @returns {array} values    value of the device
+     */
+    _outputDevice(device, action, pins, values) {
+        if (!this.isConnected()) return;
+        let id = this._registerDevice(device, pins);
+        const command = this.generateOutputCommand(
+            device,
+            id,
+            action,
+            pins,
+            values
+        );
+        console.log("Command:", command);
+        this.send(BLECharacteristic.OUTPUT_COMMAND, command);
+    }
+
+    /**
+     * Input device read function.
+     * @param {number} device  device identifier, see KakaDevice
+     * @param {array} pins     pins of the device
+     * @returns {any}          value of the device
+     */
+    _inputDevice(device, action, pins) {
+        return new Promise((resolve, reject) => {
+            if (!this.isConnected()) reject("Not Connected");
+            let id = this._registerDevice(device, pins);
+            this._devices[id].value = null;
+            const command = this.generateInputCommand(device, id, action, pins);
+            this.send(BLECharacteristic.INPUT_COMMAND, command);
+            this._ble.read(BLEService.IO_SERVICE, BLECharacteristic.INPUT_VALUES).then(data => {
+                let arraybuffer = data.buffer;
+                let uint8buffer = new Uint8Array(arraybuffer);
+                let receiveID = uint8buffer[0];
+                if (receiveID === id) {
+                    let valueLength = uint8buffer[1];
+                    if (valueLength === 1) {
+                        resolve(uint8buffer[2]);
+                    } else if (valueLength === 2) {
+                        let value = uint8buffer[2] << 8 | uint8buffer[3];
+                        resolve(value);
+                    } else {
+                        reject("Value length error");
+                    }
+                }
+            });
+            // this._ble.startNotifications(BLECharacteristic.INPUT_VALUES, this._onMessage);
+            // let interval = setInterval(() => {
+            //     if (this._devices[id].value !== null) {
+            //         clearInterval(interval);
+            //         this._ble.stopNotifications(BLECharacteristic.INPUT_VALUES);
+            //         resolve(this._devices[id].value);
+            //     }
+            // }, 10);
+        });
     }
 
     /**
@@ -313,16 +535,8 @@ class Kaka {
      * @param {number} pin - the pin to write to.
      * @param {number} value - the value to write.
      */
-    digitalOutput(pin, value) {
-        if (!this.isConnected()) return;
-        const command = this.generateOutputCommand(
-            KakaDevice.Digital,
-            pin,
-            KakaOutputAction.DigitalOutput,
-            KakaVariableType.Boolean,
-            [value]
-        );
-        this.send(KakaCharacteristic.Output, command);
+    setDigitalOutput(pin, value) {
+        this._outputDevice(KakaDevice.Digital, KakaAction.DigitalOutput, [pin], [value]);
     }
 
     /**
@@ -330,35 +544,75 @@ class Kaka {
      * @param {number} pin - the pin to read from.
      * @return {number} - the value read.
      */
-    digitalInput(pin) {
-        let valuebufferName = "digitalInput_" + pin;
-        if (this._valuebuffer[valuebufferName] === undefined) {
-            this._valuebuffer[valuebufferName] = 0;
-            if (!this.isConnected()) return 0;
-            const command = this.generateInputCommand(
-                KakaDevice.Digital,
-                pin,
-                KakaInputMode.Digital);
-            this.send(KakaCharacteristic.Input, command);
-        }
-        return this._valuebuffer[valuebufferName];
+    getDigitalInput(pin) {
+        return this._inputDevice(KakaDevice.Digital, KakaAction.DigitalInput, [pin]);
     }
 
     /**
      * PWM output.
      * @param {number} pin - the pin to write to.
-     * @param {number} value - the value to write.
+     * @param {number} value - the value to write, 0~255.
      */
-    pwmOutput(pin, value) {
-        if (!this.isConnected()) return;
-        const command = this.generateOutputCommand(
-            KakaDevice.PWM,
-            pin,
-            KakaOutputAction.PWM,
-            KakaVariableType.Number,
-            [value]
-        );
-        this.send(KakaCharacteristic.Output, command);
+    setPwmOutput(pin, value) {
+        if (value > DeviceSettings.PWMMax) {
+            value = DeviceSettings.PWMMax;
+        }
+        this._outputDevice(KakaDevice.PWM, KakaAction.PWMPulseWidthPercent, [pin], [value]);
+    }
+
+    /**
+     * Analog input.
+     * @param {number} pin - the pin to read from.
+     * @return {number} - the value read.
+     */
+    getAnalogInput(pin) {
+        return this._inputDevice(KakaDevice.Analog, KakaAction.AnalogInput, [pin]);
+        // return new Promise((resolve, reject) => {
+        //     this._inputDevice(KakaDevice.Analog, KakaAction.AnalogInput, [pin]).then(value => {
+        //         if (DeviceSettings.AnalogMax > 255) {
+        //             value = value[0] << 8 | value[1];
+        //         }
+        //         resolve(value);
+        //     }, reject);
+        // });
+    }
+
+    /**
+     * Sound level
+     * @returns {number} - the value read.
+     */
+    getSoundLevel() {
+        return new Promise((resolve, reject) => {
+            this._inputDevice(KakaDevice.Sound, KakaAction.GetSoundLevel, []).then(value => {
+                this.soundLevel = value;
+                resolve(value);
+            }, reject);
+        });
+    }
+
+    /**
+     * Get button event.
+     * @param {number} pin - the pin to read from.
+     */
+    getButtonEvent(pin) {
+        return new Promise((resolve, reject) => {
+            this.getDigitalInput(pin).then(value => {
+                let result;
+                if (value === 0) {        // Pressed
+                    result = 1;
+                } else if (value === 1) { // Released
+                    if (this._lastButtonState[pin] === 1) {
+                        result = 0;
+                    } else {              // Clicked
+                        result = 2;
+                    }
+                }
+                this._lastButtonState[pin] = value;
+                console.log(`getButtonEvent pin: ${pin} value: ${value} result: ${result}`)
+                this.buttonEvent[pin] = result;
+                resolve(result);
+            }, reject);
+        });
     }
 
     /**
@@ -366,17 +620,8 @@ class Kaka {
      * @param {number} tone - the tone to play.
      */
     buzzerPlayTone(tone) {
-        if (!this.isConnected()) return;
-        console.log(`buzzerPlayTone tone: ${tone}`)
-        let cmd = this.generateOutputCommand(
-            KakaDevice.Buzzer,
-            null,
-            KakaOutputAction.BuzzerPlayTone,
-            KakaVariableType.Number,
-            [tone >> 8, tone & 0xFF]
-        );
-        console.log(`buzzerPlayTone command: ${cmd}`)
-        this.send(BLECharacteristic.OUTPUT_COMMAND, cmd);
+        console.log(`buzzerPlayTone tone: ${tone}`);
+        this._outputDevice(KakaDevice.Buzzer, KakaAction.BuzzerPlayTone, [], [tone >> 8, tone & 0xFF]);
     }
 
     /**
@@ -385,38 +630,96 @@ class Kaka {
      * @param {number} duration - the duration to play.
      */
     buzzerPlayToneFor(tone, duration) {
-        if (!this.isConnected()) return;
         console.log(`buzzerPlayToneFor tone: ${tone} duration: ${duration}`)
-        let cmd = this.generateOutputCommand(
-            KakaDevice.Buzzer,
-            null,
-            KakaOutputAction.BuzzerPlayToneFor,
-            KakaVariableType.Number,
-            [tone >> 8, tone & 0xFF, duration >> 8, duration & 0xFF]
-        );
-        console.log(`buzzerPlayToneFor command: ${cmd}`)
-        this.send(BLECharacteristic.OUTPUT_COMMAND, cmd);
+        this._outputDevice(KakaDevice.Buzzer, KakaAction.BuzzerPlayToneFor, [], [tone >> 8, tone & 0xFF, duration >> 8, duration & 0xFF]);
     }
 
     /**
      * Buzzer Stop Tone.
      */
     buzzerStop() {
-        if (!this.isConnected()) return;
         console.log(`buzzerStop`)
-        let cmd = this.generateOutputCommand(
-            KakaDevice.Buzzer,
-            null,
-            KakaOutputAction.BuzzerStop
-        );
-        this.send(BLECharacteristic.OUTPUT_COMMAND, cmd);
+        this._outputDevice(KakaDevice.Buzzer, KakaAction.BuzzerStop, [], []);
     }
+
+    /**
+     * Ultrasonic Sensor Distance.
+     * @param {number} trig - ultrasonic trig pin.
+     * @param {number} echo - ultrasonic echo pin.
+     */
+    ultrasonicDistance(trig, echo) {
+        return this._inputDevice(KakaDevice.Ultrasonic, KakaAction.UltrasonicGetDistance, [trig, echo]);
+    }
+
+    /**
+     * Segment display show a value.
+     * @param {number} dio - Segment display echo pin.
+     * @param {number} clk - Segment display clk pin.
+     * @param {string} value - value to show.
+     */
+    segmentDisplayShowValue(dio, clk, str) {
+        data = []
+        for (let i = 0; i < str.length; i++) {
+            data.push(str.charCodeAt(i));
+        }
+        this._outputDevice(KakaDevice.SegmentDisplay, KakaAction.SegmentDisplayShowValue, [dio, clk], data);
+    }
+
+    /**
+     * Segment display Clear.
+     * @param {number} dio - Segment display echo pin.
+     * @param {number} clk - Segment display clk pin.
+     */
+    segmentDisplayClear(dio, clk) {
+        this._outputDevice(KakaDevice.SegmentDisplay, KakaAction.SegmentDisplayClear, [dio, clk], []);
+    }
+
+    /**
+     * Color Sensor Get Color.
+     * @param {number} sda - SDA pin
+     * @param {number} scl - SCL pin
+     */
+    colorSensorGetColor(sda, scl) {
+        console.log("colorSensorGetColor");
+        return this._inputDevice(KakaDevice.ColorSensor, KakaAction.ColorSensorGetColor, [sda, scl]);
+    }
+
+    /**
+     * Set motor state.
+     * @param {number} pin - the pin to write to.
+     * @param {number} state - the state to write.
+     */
+    setMotorStatus(pin, state) {
+        this._outputDevice(KakaDevice.Motor, KakaAction.MotorSetStatus, [pin], [state]);
+    }
+
+    /**
+     * Set servo angle.
+     * @param {number} pin - the pin to write to.
+     * @param {number} angle - the angle to write(0~180).
+     */
+    setServoAngle(pin, angle) {
+        angle = MathUtil.clamp(angle, 0, 180);
+        this._outputDevice(KakaDevice.Servo, KakaAction.ServoSetAngle, [pin], [angle]);
+    }
+
+    /**
+     * Set LT motor value.
+     * @param {number} pinA - the pinA to write to.
+     * @param {number} pinB - the pinB to write to.
+     * @param {number} value - the value to write(-100~100).
+     */
+    setLTMotorValue(pinA, pinB, value) {
+        value = MathUtil.clamp(value, -100, 100);
+        this._outputDevice(KakaDevice.LTMotor, KakaAction.LTMotorSetValue, [pinA, pinB], [value]);
+    }
+
 }
 
 /**
  * Scratch 3.0 blocks to interact with a Mammoth Kaka peripheral.
  */
-class MammothKakaBlocks {
+class KakaBlocks {
 
     /**
      * @return {string} - the ID of this extension.
@@ -437,7 +740,8 @@ class MammothKakaBlocks {
         this.runtime = runtime;
 
         // Create a new Kaka peripheral instance
-        this._peripheral = new Kaka(this.runtime, MammothKakaBlocks.EXTENSION_ID);
+        this._peripheral = new Kaka(this.runtime,
+            KakaBlocks.EXTENSION_ID);
     }
 
     /**
@@ -445,15 +749,16 @@ class MammothKakaBlocks {
      */
     getInfo() {
         return {
-            id: MammothKakaBlocks.EXTENSION_ID,
+            id: KakaBlocks.EXTENSION_ID,
             name: 'Kaka',
             blockIconURI: iconURI,
             showStatusButton: true,
             blocks: [
+                // setDigitalOutput
                 {
-                    opcode: 'digitalOutput',
+                    opcode: 'setDigitalOutput',
                     text: formatMessage({
-                        id: 'kaka.digitalOutput',
+                        id: 'kaka.setDigitalOutput',
                         default: 'Digital Output [PIN] set to [LEVEL]',
                         description: 'Set a digital output pin to specific level'
                     }),
@@ -462,7 +767,7 @@ class MammothKakaBlocks {
                         PIN: {
                             type: ArgumentType.NUMBER,
                             menu: 'digitalOutputPins',
-                            defaultValue: 0
+                            defaultValue: 2
                         },
                         LEVEL: {
                             type: ArgumentType.NUMBER,
@@ -471,10 +776,11 @@ class MammothKakaBlocks {
                         }
                     },
                 },
+                // getDigitalInput
                 {
-                    opcode: 'digitalInput',
+                    opcode: 'getDigitalInput',
                     text: formatMessage({
-                        id: 'kaka.digitalInput',
+                        id: 'kaka.getDigitalInput',
                         default: 'Digital Input [PIN]',
                         description: 'Get level of a digital input pin'
                     }),
@@ -487,10 +793,11 @@ class MammothKakaBlocks {
                         },
                     },
                 },
+                // setPwmOutput
                 {
-                    opcode: 'pwmOutput',
+                    opcode: 'setPwmOutput',
                     text: formatMessage({
-                        id: 'kaka.pwmOutput',
+                        id: 'kaka.setPwmOutput',
                         default: 'PWM Output [PIN] set to [VALUE]',
                         description: 'Set a PWM output pin to specific value(0-255)'
                     }),
@@ -498,8 +805,8 @@ class MammothKakaBlocks {
                     arguments: {
                         PIN: {
                             type: ArgumentType.NUMBER,
-                            menu: 'pwmOutputPins',
-                            defaultValue: 0
+                            menu: 'setPwmOutputPins',
+                            defaultValue: 2
                         },
                         VALUE: {
                             type: ArgumentType.NUMBER,
@@ -507,10 +814,11 @@ class MammothKakaBlocks {
                         }
                     },
                 },
+                // getAnalogInput
                 {
-                    opcode: 'analogInput',
+                    opcode: 'getAnalogInput',
                     text: formatMessage({
-                        id: 'kaka.analogInput',
+                        id: 'kaka.getAnalogInput',
                         default: 'Analog Input [PIN]',
                         description: 'Get value of a analog input pin'
                     }),
@@ -518,11 +826,12 @@ class MammothKakaBlocks {
                     arguments: {
                         PIN: {
                             type: ArgumentType.NUMBER,
-                            menu: 'analogInputPins',
+                            menu: 'getAnalogInputPins',
                             defaultValue: 13
                         },
                     },
                 },
+                // mapValue
                 {
                     opcode: 'mapValue',
                     text: formatMessage({
@@ -534,15 +843,15 @@ class MammothKakaBlocks {
                     arguments: {
                         VALUE: {
                             type: ArgumentType.NUMBER,
-                            defaultValue: 0
+                            defaultValue: 50
                         },
                         FROM_LOW: {
                             type: ArgumentType.NUMBER,
-                            defaultValue: 0
+                            defaultValue: 1
                         },
                         FROM_HIGH: {
                             type: ArgumentType.NUMBER,
-                            defaultValue: 1023
+                            defaultValue: 100
                         },
                         TO_LOW: {
                             type: ArgumentType.NUMBER,
@@ -554,6 +863,77 @@ class MammothKakaBlocks {
                         }
                     },
                 },
+                // When sound level
+                {
+                    opcode: 'whenSoundLevel',
+                    text: formatMessage({
+                        id: 'kaka.whenSoundLevel',
+                        default: 'When sound level [OP] [LEVEL]',
+                        description: 'When sound level is greater than or less than a specific value'
+                    }),
+                    blockType: BlockType.HAT,
+                    arguments: {
+                        OP: {
+                            type: ArgumentType.STRING,
+                            menu: 'soundLevelOps',
+                            defaultValue: '>'
+                        },
+                        LEVEL: {
+                            type: ArgumentType.NUMBER,
+                            defaultValue: 600
+                        },
+                    },
+                },
+                // Sound level
+                {
+                    opcode: 'getSoundLevel',
+                    text: formatMessage({
+                        id: 'kaka.getSoundLevel',
+                        default: 'Sound level',
+                        description: 'Get sound level'
+                    }),
+                    blockType: BlockType.REPORTER,
+                },
+                // When button pressed/released/clicked
+                {
+                    opcode: 'whenButton',
+                    text: formatMessage({
+                        id: 'kaka.whenButton',
+                        default: 'When button [BUTTON] [STATE]',
+                        description: 'When a button is pressed/released/clicked'
+                    }),
+                    blockType: BlockType.HAT,
+                    arguments: {
+                        BUTTON: {
+                            type: ArgumentType.int,
+                            menu: 'buttons',
+                            defaultValue: 0
+                        },
+                        STATE: {
+                            type: ArgumentType.int,
+                            menu: 'buttonEvents',
+                            defaultValue: 1
+                        }
+                    },
+                },
+                // Button state
+                {
+                    opcode: 'getButtonState',
+                    text: formatMessage({
+                        id: 'kaka.getButtonState',
+                        default: 'Button [BUTTON] state',
+                        description: 'Get state of a button'
+                    }),
+                    blockType: BlockType.REPORTER,
+                    arguments: {
+                        BUTTON: {
+                            type: ArgumentType.int,
+                            menu: 'buttons',
+                            defaultValue: 0
+                        },
+                    },
+                },
+                // buzzerPlayNoteFor
                 {
                     opcode: 'buzzerPlayNoteFor',
                     text: formatMessage({
@@ -569,10 +949,11 @@ class MammothKakaBlocks {
                         },
                         DURATION: {
                             type: ArgumentType.NUMBER,
-                            defaultValue: 500
+                            defaultValue: 0.5
                         }
                     },
                 },
+                // buzzerStop
                 {
                     opcode: 'buzzerStop',
                     text: formatMessage({
@@ -582,6 +963,7 @@ class MammothKakaBlocks {
                     }),
                     blockType: BlockType.COMMAND,
                 },
+                // ultrasonicDistance
                 {
                     opcode: 'ultrasonicDistance',
                     text: formatMessage({
@@ -598,38 +980,20 @@ class MammothKakaBlocks {
                         },
                     },
                 },
-                {
-                    opcode: 'setSegmentDisplay',
-                    text: formatMessage({
-                        id: 'kaka.setSegmentDisplay',
-                        default: 'Set Segment Display [NAME] DIO, CLK to [PORT]',
-                        description: 'Initialize a segment display'
-                    }),
-                    blockType: BlockType.COMMAND,
-                    arguments: {
-                        NAME: {
-                            type: ArgumentType.STRING,
-                            defaultValue: "display"
-                        },
-                        PORT: {
-                            type: ArgumentType.STRING,
-                            menu: 'ports',
-                            defaultValue: "32,33"
-                        }
-                    }
-                },
+                // segmentDisplayShowValue
                 {
                     opcode: 'segmentDisplayShowValue',
                     text: formatMessage({
                         id: 'kaka.segmentDisplayShowValue',
-                        default: 'Segment Display [NAME] show [VALUE]',
+                        default: 'Segment Display DIO, CLK:[PORT] show [VALUE]',
                         description: 'Show value on segment display'
                     }),
                     blockType: BlockType.COMMAND,
                     arguments: {
-                        NAME: {
+                        PORT: {
                             type: ArgumentType.STRING,
-                            defaultValue: "display"
+                            menu: 'ports',
+                            defaultValue: "32,33"
                         },
                         VALUE: {
                             type: ArgumentType.STRING,
@@ -637,88 +1001,54 @@ class MammothKakaBlocks {
                         }
                     }
                 },
+                // segmentDisplayClear
                 {
                     opcode: 'segmentDisplayClear',
                     text: formatMessage({
                         id: 'kaka.segmentDisplayClear',
-                        default: 'Segment Display [NAME] clear',
+                        default: 'Segment Display DIO, CLK:[PORT] clear',
                         description: 'Clear segment display'
                     }),
                     blockType: BlockType.COMMAND,
                     arguments: {
-                        NAME: {
-                            type: ArgumentType.STRING,
-                            defaultValue: "display"
-                        }
-                    }
-                },
-                {
-                    opcode: 'setColorSensor',
-                    text: formatMessage({
-                        id: 'kaka.setColorSensor',
-                        default: 'Set Color Sensor [NAME] SCL, SDA to [PORT]',
-                        description: 'Initialize a color sensor'
-                    }),
-                    blockType: BlockType.COMMAND,
-                    arguments: {
-                        NAME: {
-                            type: ArgumentType.STRING,
-                            defaultValue: "bh"
-                        },
                         PORT: {
                             type: ArgumentType.STRING,
                             menu: 'ports',
                             defaultValue: "32,33"
-                        }
+                        },
                     }
                 },
+                // colorSensorGetColor
                 {
-                    opcode: 'colorSensorColor',
+                    opcode: 'colorSensorGetColor',
                     text: formatMessage({
-                        id: 'kaka.colorSensorColor',
-                        default: 'Color Sensor [NAME] color',
+                        id: 'kaka.colorSensorGetColor',
+                        default: 'Color Sensor SCL, SDA[PORT] color',
                         description: 'Get color from Color Sensor'
                     }),
                     blockType: BlockType.REPORTER,
                     arguments: {
-                        NAME: {
-                            type: ArgumentType.STRING,
-                            defaultValue: "bh"
-                        },
-                    }
-                },
-                {
-                    opcode: 'setMotor',
-                    text: formatMessage({
-                        id: 'kaka.setMotor',
-                        default: 'Set Motor [NAME] to [PORT]',
-                        description: 'Initialize a motor'
-                    }),
-                    blockType: BlockType.COMMAND,
-                    arguments: {
-                        NAME: {
-                            type: ArgumentType.STRING,
-                            defaultValue: "motor"
-                        },
                         PORT: {
                             type: ArgumentType.STRING,
                             menu: 'ports',
                             defaultValue: "32,33"
-                        }
+                        },
                     }
                 },
+                // setMotorStatus
                 {
-                    opcode: 'setMotorState',
+                    opcode: 'setMotorStatus',
                     text: formatMessage({
-                        id: 'kaka.setMotorState',
-                        default: 'Set Motor [NAME] to [ONOFF]',
+                        id: 'kaka.setMotorStatus',
+                        default: 'Set Motor [PORT] to [ONOFF]',
                         description: 'Set motor state'
                     }),
                     blockType: BlockType.COMMAND,
                     arguments: {
-                        NAME: {
+                        PORT: {
                             type: ArgumentType.STRING,
-                            defaultValue: "motor"
+                            menu: 'ports',
+                            defaultValue: "32,33"
                         },
                         ONOFF: {
                             type: ArgumentType.NUMBER,
@@ -727,38 +1057,20 @@ class MammothKakaBlocks {
                         }
                     }
                 },
-                {
-                    opcode: 'setServo',
-                    text: formatMessage({
-                        id: 'kaka.setServo',
-                        default: 'Set Servo [NAME] to [PIN]',
-                        description: 'Initialize a Servo'
-                    }),
-                    blockType: BlockType.COMMAND,
-                    arguments: {
-                        NAME: {
-                            type: ArgumentType.STRING,
-                            defaultValue: "servo"
-                        },
-                        PIN: {
-                            type: ArgumentType.NUMBER,
-                            menu: 'servoPins',
-                            defaultValue: 4
-                        }
-                    }
-                },
+                // setServoAngle
                 {
                     opcode: 'setServoAngle',
                     text: formatMessage({
                         id: 'kaka.setServoAngle',
-                        default: 'Set Servo [NAME] to [ANGLE]',
+                        default: 'Set Servo [PIN] to [ANGLE]',
                         description: 'Set Servo to angle'
                     }),
                     blockType: BlockType.COMMAND,
                     arguments: {
-                        NAME: {
-                            type: ArgumentType.STRING,
-                            defaultValue: "servo"
+                        PIN: {
+                            type: ArgumentType.NUMBER,
+                            menu: 'servoPins',
+                            defaultValue: 15
                         },
                         ANGLE: {
                             type: ArgumentType.ANGLE,
@@ -766,42 +1078,24 @@ class MammothKakaBlocks {
                         }
                     }
                 },
+                // setLTMotorValue
                 {
-                    opcode: 'setLTMotor',
+                    opcode: 'setLTMotorValue',
                     text: formatMessage({
-                        id: 'kaka.setLTMotor',
-                        default: 'Set LT Motor [NAME] to [PORT]',
-                        description: 'Initialize a LT Motor'
-                    }),
-                    blockType: BlockType.COMMAND,
-                    arguments: {
-                        NAME: {
-                            type: ArgumentType.STRING,
-                            defaultValue: "lt_motor"
-                        },
-                        PORT: {
-                            type: ArgumentType.STRING,
-                            menu: 'ltMotorPorts',
-                            defaultValue: "32,33"
-                        }
-                    }
-                },
-                {
-                    opcode: 'setLTMotorState',
-                    text: formatMessage({
-                        id: 'kaka.setLTMotorState',
-                        default: 'Set LT Motor [NAME] to [VALUE]',
+                        id: 'kaka.setLTMotorValue',
+                        default: 'Set LT Motor [PORT] to [VALUE]',
                         description: 'Set LT Motor state'
                     }),
                     blockType: BlockType.COMMAND,
                     arguments: {
-                        NAME: {
+                        PORT: {
                             type: ArgumentType.STRING,
-                            defaultValue: "lt_motor"
+                            menu: 'ltMotorPorts',
+                            defaultValue: "19,18"
                         },
                         VALUE: {
                             type: ArgumentType.NUMBER,
-                            defaultValue: 0
+                            defaultValue: 50
                         }
                     }
                 },
@@ -847,7 +1141,7 @@ class MammothKakaBlocks {
                         },
                     ]
                 },
-                pwmOutputPins: {
+                setPwmOutputPins: {
                     acceptReporters: true,
                     items: [
                         { text: '2', value: 2 },
@@ -857,7 +1151,7 @@ class MammothKakaBlocks {
                         { text: '33', value: 33 },
                     ]
                 },
-                analogInputPins: {
+                getAnalogInputPins: {
                     acceptReporters: true,
                     items: [
                         { text: '13', value: 13 },
@@ -866,11 +1160,75 @@ class MammothKakaBlocks {
                         { text: '33', value: 33 },
                     ]
                 },
+                soundLevelOps: {
+                    acceptReporters: true,
+                    items: [
+                        {
+                            text: formatMessage({
+                                id: 'kaka.soundLevelOps.gt',
+                                default: '>',
+                                description: 'Sound level greater than'
+                            }), value: '>'
+                        },
+                        {
+                            text: formatMessage({
+                                id: 'kaka.soundLevelOps.lt',
+                                default: '<',
+                                description: 'Sound level less than'
+                            }), value: '<'
+                        },
+                    ]
+                },
+                buttons: {
+                    acceptReporters: true,
+                    items: [
+                        {
+                            text: formatMessage({
+                                id: 'kaka.buttons.a',
+                                default: 'A',
+                                description: 'Button A'
+                            }), value: 0
+                        },
+                        {
+                            text: formatMessage({
+                                id: 'kaka.buttons.b',
+                                default: 'B',
+                                description: 'Button B'
+                            }), value: 5
+                        },
+                    ]
+                },
+                buttonEvents: {
+                    acceptReporters: true,
+                    items: [
+                        {
+                            text: formatMessage({
+                                id: 'kaka.buttonEvents.pressed',
+                                default: 'pressed',
+                                description: 'Button pressed'
+                            }), value: 1
+                        },
+                        {
+                            text: formatMessage({
+                                id: 'kaka.buttonEvents.released',
+                                default: 'released',
+                                description: 'Button released'
+                            }), value: 0
+                        },
+                        {
+                            text: formatMessage({
+                                id: 'kaka.buttonEvents.clicked',
+                                default: 'clicked',
+                                description: 'Button clicked'
+                            }), value: 2
+                        },
+                    ]
+                },
                 servoPins: {
                     acceptReporters: true,
                     items: [
-                        { text: '4', value: 4 },
                         { text: '15', value: 15 },
+                        { text: '4', value: 4 },
                         { text: '16', value: 16 },
                         { text: '17', value: 17 },
                     ]
@@ -909,70 +1267,139 @@ class MammothKakaBlocks {
                             }), value: 0
                         },
                     ]
-                }
+                },
             }
         };
     }
 
-    /**
-     * Digital output block.
-     */
-    digitalOutput(args) {
-        this._peripheral.digitalOutput(args.PIN, args.LEVEL);
+    setDigitalOutput(args) {
+        let pin = Cast.toNumber(args.PIN);
+        let level = Cast.toNumber(args.LEVEL);
+        this._peripheral.setDigitalOutput(pin, level);
     }
 
-    /**
-     * Digital input block.
-     * @returns {number} level of the digital input pin.
-     */
-    digitalInput(args) {
-        return this._peripheral.digitalInput(args.PIN);
+    getDigitalInput(args) {
+        let pin = Cast.toNumber(args.PIN);
+        return this._peripheral.getDigitalInput(pin);
     }
 
-    /**
-     * PWM output
-     */
-    pwmOutput(args) {
-        this._peripheral.pwmOutput(args.PIN, args.VALUE);
+    setPwmOutput(args) {
+        let pin = Cast.toNumber(args.PIN);
+        let value = Cast.toNumber(args.VALUE);
+        this._peripheral.setPwmOutput(pin, value);
     }
 
-    /**
-     * Analog input block.
-     * @returns {number} value of the analog input pin.
-     */
-    analogInput(args) {
-        return this._peripheral.analogInput(args.PIN);
+    getAnalogInput(args) {
+        let pin = Cast.toNumber(args.PIN);
+        return this._peripheral.getAnalogInput(pin);
     }
 
-    /**
-     * Map Value from a range to another range
-     */
     mapValue(args) {
-        return args.VALUE * (args.TO_HIGH - args.TO_LOW) / (args.FROM_HIGH - args.FROM_LOW) + args.TO_LOW;
+        let value = Cast.toNumber(args.VALUE);
+        let toLow = Cast.toNumber(args.TO_LOW);
+        let toHigh = Cast.toNumber(args.TO_HIGH);
+        let fromLow = Cast.toNumber(args.FROM_LOW);
+        let fromHigh = Cast.toNumber(args.FROM_HIGH);
+        let result = value * (toHigh - toLow) / (fromHigh - fromLow) + toLow;
+        return result.toFixed(2)
     }
 
-    /**
-     * Play Note.
-     */
-    playNote(args) {
-        let tone = this._noteToTone(args.NOTE);
-        this._peripheral.buzzerPlayTone(tone);
+    whenSoundLevel(args) {
+        let level = Cast.toNumber(args.LEVEL);
+        this._peripheral.getSoundLevel();
+        let soundLevel = this._peripheral.soundLevel;
+        console.log('soundLevel', soundLevel)
+        if (args.OP === '>') {
+            return soundLevel > level;
+        } else {
+            return soundLevel < level;
+        }
+        // return new Promise((resolve, reject) => {
+        //     this._peripheral.getSoundLevel().then((soundLevel) => {
+        //         console.log('soundLevel', soundLevel)
+        //         if (args.OP === '>') {
+        //             resolve(soundLevel > level);
+        //         } else {
+        //             resolve(soundLevel < level);
+        //         }
+        //     }, reject);
+        // });
     }
 
+    getSoundLevel() {
+        return this._peripheral.getSoundLevel();
+    }
 
-    /**
-     * Play Note for.
-     */
+    whenButton(args) {
+        let pin = Cast.toNumber(args.BUTTON);
+        let state = Cast.toNumber(args.STATE);
+        this._peripheral.getButtonEvent(pin);
+        return this._peripheral.buttonEvent[pin] === state;
+    }
+
+    getButtonState(args) {
+        let pin = Cast.toNumber(args.BUTTON);
+        return this._peripheral.getDigitalInput(pin);
+    }
+
     buzzerPlayNoteFor(args) {
-        let tone = this._noteToTone(args.NOTE);
-        this._peripheral.buzzerPlayToneFor(tone, args.DURATION);
+        let note = Cast.toNumber(args.NOTE);
+        let duration = Cast.toNumber(args.DURATION) * 1000;
+        let tone = this._noteToTone(note);
+        this._peripheral.buzzerPlayToneFor(tone, duration);
     }
 
-    /**
-     * Stop the buzzer.
-     */
     buzzerStop() {
         this._peripheral.buzzerStop();
+    }
+
+    ultrasonicDistance(args) {
+        let trig = Cast.toNumber(args.PORT.split(',')[0]);
+        let echo = Cast.toNumber(args.PORT.split(',')[1]);
+        return this._peripheral.ultrasonicDistance(trig, echo);
+    }
+
+    segmentDisplayShowValue(args) {
+        let dio = Cast.toNumber(args.PORT.split(',')[0]);
+        let clk = Cast.toNumber(args.PORT.split(',')[1]);
+        let value = args.VALUE;
+        this._peripheral.segmentDisplayShowValue(dio, clk, value);
+    }
+
+    segmentDisplayClear(args) {
+        let dio = Cast.toNumber(args.PORT.split(',')[0]);
+        let clk = Cast.toNumber(args.PORT.split(',')[1]);
+        this._peripheral.segmentDisplayClear(dio, clk);
+    }
+
+    colorSensorGetColor(args) {
+        let scl = Cast.toNumber(args.PORT.split(',')[0]);
+        let sda = Cast.toNumber(args.PORT.split(',')[1]);
+        return new Promise((resolve, reject) => {
+            this._peripheral.colorSensorGetColor(sda, scl).then(color => {
+                resolve(ColorSensorColors[color]);
+            }, reject);
+        });
+    }
+
+    setMotorStatus(args) {
+        let pin = Cast.toNumber(args.PORT.split(',')[1]);
+        let status = Cast.toNumber(args.ONOFF);
+        this._peripheral.setMotorStatus(pin, status);
+    }
+
+    setServoAngle(args) {
+        let pin = Cast.toNumber(args.PIN);
+        let angle = Cast.toNumber(args.ANGLE);
+        this._peripheral.setServoAngle(pin, angle);
+    }
+
+    setLTMotorValue(args) {
+        let pinA = Cast.toNumber(args.PORT.split(',')[0]);
+        let pinB = Cast.toNumber(args.PORT.split(',')[1]);
+        let value = Cast.toNumber(args.VALUE);
+        value = MathUtil.clamp(value, 0, 100);
+        this._peripheral.setLTMotorValue(pinA, pinB, value);
     }
 
     /**
@@ -986,4 +1413,4 @@ class MammothKakaBlocks {
     }
 }
 
-module.exports = MammothKakaBlocks;
+module.exports = KakaBlocks;
