@@ -166,7 +166,11 @@ class WebBle {
                     if (optStartNotifications) {
                         this.startNotifications(serviceId, characteristicId, onCharacteristicChanged);
                     }
-                    characteristic.readValue().then(resolve, this._handleDisconnectError);
+                    characteristic.readValue().then(data => {
+                        var arraybuffer = data.buffer;
+                        var uint8buffer = new Uint8Array(arraybuffer);
+                        resolve(uint8buffer);
+                    }, this._handleDisconnectError);
                 }, this._handleDisconnectError);
             }, this._handleDisconnectError);
         });

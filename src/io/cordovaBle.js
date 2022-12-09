@@ -4,6 +4,8 @@
  * cordova-plugin-ble-central wrap
  */
 
+const formatMessage = require("format-message");
+
 
 class CordovaBle {
     /**
@@ -42,6 +44,12 @@ class CordovaBle {
     _onDiscoverDevice = (device) => {
         this._availablePeripherals[device.id] = {
             "peripheralId": device.id,
+            "name": device.name || formatMessage({
+                id: "ble.unknownDevice",
+                default: "Unknown Device",
+                description: "Name of an unknown BLE device"
+            }),
+            "rssi": device.rssi,
         };
         this._runtime.emit(
             this._runtime.constructor.PERIPHERAL_LIST_UPDATE,
@@ -104,10 +112,8 @@ class CordovaBle {
      * @return {Promise} - a promise from the remote startNotifications request.
      */
     startNotifications = (serviceId, characteristicId, onCharacteristicChanged = null) => {
-        return new Promise((resolve, reject) => {
-            ble.startNotification(this._deviceId, serviceId, characteristicId, onCharacteristicChanged, reject);
-            resolve();
-        })
+        ble.startNotification(this._deviceId, serviceId, characteristicId, onCharacteristicChanged, this._handleDisconnectError);
+        return Promise.resolve();
     }
 
     /**
@@ -119,11 +125,14 @@ class CordovaBle {
      * @return {Promise} - a promise from the remote read request.
      */
     read = (serviceId, characteristicId, optStartNotifications = false, onCharacteristicChanged = null) => {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             if (optStartNotifications) {
                 this.startNotifications(serviceId, characteristicId, onCharacteristicChanged);
             }
-            ble.read(this._deviceId, serviceId, characteristicId, resolve, reject);
+            ble.read(this._deviceId, serviceId, characteristicId, (arraybuffer => {
+                var uint8buffer = new Uint8Array(arraybuffer);
+                resolve(uint8buffer);
+            }), this._handleDisconnectError);
         });
     }
 
@@ -137,12 +146,32 @@ class CordovaBle {
      */
     write = (serviceId, characteristicId, message, withResponse = null) => {
         let data = Uint8Array.from(message);
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             if (withResponse) {
-                ble.write(this._deviceId, serviceId, characteristicId, data.buffer, resolve, reject);
+                ble.write(this._deviceId, serviceId, characteristicId, data.buffer, resolve, this._handleDisconnectError);
             } else {
-                ble.writeWithoutResponse(this._deviceId, serviceId, characteristicId, data.buffer, resolve, reject);
+                ble.writeWithoutResponse(this._deviceId, serviceId, characteristicId, data.buffer, resolve, this._handleDisconnectError);
             }
+        });
+    }
+
+    _handleDisconnectError = (e) => {
+        if (!this._connected) return;
+        // ignore: GATT operation already in progress.
+        if (e.code === 19) {
+            return;
+        }
+        console.log("_handleDisconnectError", e);
+
+        this.disconnect();
+
+        if (this._resetCallback) {
+            this._resetCallback();
+        }
+
+        this._runtime.emit(this._runtime.constructor.PERIPHERAL_CONNECTION_LOST_ERROR, {
+            message: `Lost connection to`,
+            extensionId: this._extensionId
         });
     }
 
