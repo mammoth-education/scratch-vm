@@ -24,6 +24,7 @@ class WebBle {
         this._connected = false;
         this._availablePeripherals = {};
         this._deviceId = null;
+        this._deviceName = null;
         this._devices = {};
         this._bleServer = null;
 
@@ -68,6 +69,8 @@ class WebBle {
             this._bleServer = server;
             this._connected = true;
             this._deviceId = id;
+            this._deviceName = this._devices[id].name;
+            console.log("connected device name: " + this._deviceName);
             this._runtime.emit(this._runtime.constructor.PERIPHERAL_CONNECTED);
             this._connectCallback();
             // 现在notify不支持，左移写一个定时器，每隔一段时间读取一次，来模拟notify
@@ -101,6 +104,10 @@ class WebBle {
         if (this.isConnected()) {
             this._bleServer.disconnect();
         }
+        this._bleServer = null;
+        this._deviceId = null;
+        this._deviceName = null;
+        this._devices = {};
         this._onCharacteristicChangedCallbacks = {};
         clearInterval(this._onCharacteristicChangedTimer);
         this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
@@ -115,6 +122,14 @@ class WebBle {
         } else {
             return false;
         }
+    }
+
+    /**
+     * Get peripheral name
+     * @return {string} the peripheral name.
+     */
+    getPeripheralName = () => {
+        return this._deviceName;
     }
 
     /**

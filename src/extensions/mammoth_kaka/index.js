@@ -206,10 +206,19 @@ class Kaka {
     }
 
     /**
-     * Change device name
+     * Get device name
+     * @return {string} the device name.
+     */
+    getPeripheralName() {
+        if (!this._ble) return '';
+        return this._ble.getPeripheralName();
+    }
+
+    /**
+     * rename the device
      * @param {string} name - the name to change.
      */
-    changeDeviceName(name) {
+    rename(name) {
         return this._ble.write(BLEService.DEVICE_SERVICE, BLECharacteristic.ATTACHED_IO, [DeviceAction.CHANGE_NAME, name.length, ...name.split('').map(c => c.charCodeAt(0))]);
     }
 

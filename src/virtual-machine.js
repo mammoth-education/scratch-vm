@@ -292,6 +292,22 @@ class VirtualMachine extends EventEmitter {
     }
 
     /**
+     * Get device name
+     * @param {string} extensionId - the id of the extension.
+     * @return {string} - the name of the connected peripheral.
+     */
+    getPeripheralName (extensionId) {
+        return this.runtime.getPeripheralName(extensionId);
+    }
+
+    /**
+     * Rename the extension's connected peripheral.
+     */
+    renamePeripheral (extensionId, newName) {
+        this.runtime.renamePeripheral(extensionId, newName);
+    }
+
+    /**
      * Returns whether the extension has a currently connected peripheral.
      * @param {string} extensionId - the id of the extension.
      * @return {boolean} - whether the extension has a connected peripheral.

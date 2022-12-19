@@ -1543,6 +1543,30 @@ class Runtime extends EventEmitter {
     }
 
     /**
+     * Get device name
+     * @param {string} extensionId - the id of the extension.
+     * @return {string} - the name of the device.
+     */
+    getPeripheralName (extensionId) {
+        let deviceName = '';
+        if (this.peripheralExtensions[extensionId]) {
+            deviceName = this.peripheralExtensions[extensionId].getPeripheralName();
+        }
+        return deviceName;
+    }
+
+    /**
+     * Rename the extension's connected peripheral.
+     * @param {string} extensionId - the id of the extension.
+     * @param {string} newName - the new name of the peripheral.
+     */
+    renamePeripheral (extensionId, newName) {
+        if (this.peripheralExtensions[extensionId]) {
+            this.peripheralExtensions[extensionId].rename(newName);
+        }
+    }
+
+    /**
      * Returns whether the extension has a currently connected peripheral.
      * @param {string} extensionId - the id of the extension.
      * @return {boolean} - whether the extension has a connected peripheral.

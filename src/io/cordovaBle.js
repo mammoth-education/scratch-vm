@@ -26,6 +26,7 @@ class CordovaBle {
         this._connected = false;
         this._availablePeripherals = {};
         this._deviceId = null;
+        this._deviceName = null;
 
         let services = [];
         let filters = peripheralOptions.filters
@@ -75,6 +76,7 @@ class CordovaBle {
         let onConnected = () => {
             this._connected = true;
             this._deviceId = id;
+            this._deviceName = this._availablePeripherals[id].name;
             this._runtime.emit(this._runtime.constructor.PERIPHERAL_CONNECTED);
             this._connectCallback();
         }
@@ -94,7 +96,16 @@ class CordovaBle {
         if (ble.isConnected(this._peripheralId)) {
             ble.disconnect(this._peripheralId);
         }
+        this._deviceId = null;
+        this._deviceName = null;
         this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
+    }
+
+    /**
+     * Get device name.
+     */
+    getPeripheralName = () => {
+        return this._deviceName;
     }
 
     /**
