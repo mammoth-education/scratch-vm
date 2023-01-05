@@ -5,12 +5,12 @@ const Cast = require('../../util/cast');
 const MathUtil = require('../../util/math-util');
 
 let BLE = null;
-if (window.cordova) {
-    console.log("BLE: cordova");
-    BLE = require('../../io/cordovaBle');
-} else if (navigator.bluetooth) {
+if (navigator.bluetooth) {
     console.log("BLE: webBle");
     BLE = require('../../io/webBle');
+} else if (window.cordova) {
+    console.log("BLE: cordova");
+    BLE = require('../../io/cordovaBle');
 } else {
     console.log("BLE: scratch ble");
     BLE = require('../../io/ble');

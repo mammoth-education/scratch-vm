@@ -1,8 +1,46 @@
 /**
- * Cordova ble plugin for iOS.
+ * Web BLE
  * 
- * cordova-plugin-ble-central wrap
+ * Web bluetooth API wrap
+ * 
+ * 
+ * 这个代码很奇葩，这里做下记录。
+ * 
+ * 1. Scratch的连接流程是这样的：
+ *      1. 实例化WebBle对象时就要触发搜索，
+ *      2. 搜索的结果通过`this._runtime.emit`发送`PERIPHERAL_LIST_UPDATE`事件给Scratch VM，
+ *      3. Scratch VM收到事件后，给到GUI显示设备列表
+ *      4. 用户在设备列表中选择设备，点击连接
+ *      5. 连接事件触发`connectPeripheral`函数来连接设备
+ * 
+ * 2. 由于网页有安全限制，需要用户在浏览器上给连接设备权限给网页，所以设备列表和选择设备需要在浏览器端实现
+ *     因此，下面的`navigator.bluetooth.requestDevice`的回调函数是直接连接设备，因为用户已经在浏览器上选择
+ *     了设备，相当于上面的步骤跳过了2，3，4步。网页也根本拿不到设备列表，只能拿到最后用户选择的设备。
+ * 
+ * 3. 而Electron作为一个Chromium内核的桌面应用，本质和浏览器是一样的，但他把蓝牙设备选择的部分留给了用户实现
+ *      而我们又为了统一桌面应用和移动端应用的一致性，所以决定用Scratch自带的蓝牙设备选择界面。又因为，Web Bloetooth
+ *      的连接是不能直接通过设备ID连接的，应该也是为了安全，必须要用户选择设备后，由`navigator.bluetooth.requestDevice`
+ *      的回调返回因此就有了以下
+ *      奇怪的实现流程：
+ *      1. 实例化WebBle对象时就要触发搜索，这里没有变，而且和浏览器一样，`navigator.bluetooth.requestDevice`
+ *          的回调函数是直接连接设备。
+ *      2. Electron那边在`mammoth-coding\platforms\electron\platform_www\cdv-electron-main.js`中，`select-bluetooth-device`
+ *          的触发事件中，会触发`onBluetoothDevicesFound`事件，这个事件会把设备列表发送给网页。这里用的是
+ *          ElectronAPP和网页之间的通信方式。
+ *      3. 在`mammoth-coding\platforms\electron\platform_www\cdv-electron-preload.js`中收到了设备列表，会触发，再
+ *          通过触发自定义事件`onBluetoothDevicesFound`发送给网页。
+ *      4. 在`scratch-vm\src\io\webBle.js`中监听了`onBluetoothDevicesFound`事件，收到设备列表后，通过`this._onDiscoverDevice`
+ *          函数把设备列表，通过“this._runtime.emit”发送“PERIPHERAL_LIST_UPDATE”事件给Scratch VM，
+ *      5. 这样Scratch GUI页面就呈现了设备列表，和园本的流程一样
+ *      6. 在用户选择设备，点击连接后，触发`connectPeripheral`函数，函数再触发`onBluetoothDeviceSelected`事件，把需要连接的ID传给Electron
+ *      7. 传给Electron的方法还是需要先经过`mammoth-coding\platforms\electron\platform_www\cdv-electron-preload.js`，监听`onBluetoothDeviceSelected`
+ *          事件，然后再通过ipcRenderer.send发送给Electron APP。
+ *      8. 在`mammoth-coding\platforms\electron\platform_www\cdv-electron-main.js`中, 通过`ipcMain.on` `onBluetoothDeviceSelected`事件
+ *          接收到ID，再通过`bluetoothDeviceSelected`把`BluetoothDevice`对象返回给`navigator.bluetooth.requestDevice`的回调函数。
+ *      9. 这样就完成了连接设备的流程。
  */
+
+const formatMessage = require("format-message");
 
 
 class WebBle {
@@ -25,25 +63,43 @@ class WebBle {
         this._availablePeripherals = {};
         this._deviceId = null;
         this._deviceName = null;
-        this._devices = {};
         this._bleServer = null;
 
-        navigator.bluetooth.requestDevice(peripheralOptions).then(this._onDiscoverDevice, this._onScanError);
+        //  Electron的奇葩实现
+        if (cordova && cordova.platformId === "electron") {
+            document.addEventListener('onBluetoothDevicesFound', (event) => {
+                let deviceList = event.detail;
+                this._onDiscoverDevice(deviceList);
+            })
+        }
+        
+        navigator.bluetooth.requestDevice(peripheralOptions).then(this.connectDevice, this._onScanError);
+        
 
-        // 现在notify不支持，左移写一个定时器，每隔一段时间读取一次，来模拟notify
+        // 现在notify不支持，所以写一个定时器，每隔一段时间读取一次，来模拟notify
         this._onCharacteristicChangedCallbacks = {};
         this._onCharacteristicChangedTimer = null;
     }
 
     /**
      * Scan callback for BLE peripheral discovery.
-     * @param {object} device - the discovered peripheral.
+     * @param {array} deviceList - the discovered peripheral.
      */
-    _onDiscoverDevice = (device) => {
-        this._devices[device.id] = device;
-        this._availablePeripherals[device.id] = {
-            "peripheralId": device.id,
-        };
+    _onDiscoverDevice = (deviceList) => {
+        if (deviceList && deviceList.length <= 0) {
+            return;
+        }
+        deviceList.forEach(device => {
+            this._availablePeripherals[device.deviceId] = {
+                "peripheralId": device.deviceId,
+                "name": device.deviceName || formatMessage({
+                    id: "ble.unknownDevice",
+                    default: "Unknown Device",
+                    description: "Name of an unknown BLE device"
+                }),
+                "rssi": device.rssi,
+            };
+        });
         this._runtime.emit(
             this._runtime.constructor.PERIPHERAL_LIST_UPDATE,
             this._availablePeripherals
@@ -60,16 +116,26 @@ class WebBle {
     }
 
     /**
-     * Try connecting to the input peripheral id, and then call the connect
-     * callback if connection is successful.
-     * @param {number} id - the id of the peripheral to connect to
+     * 当网页内部设备列表上点击连接设备时， 触发这个函数。Electron的特殊情况，需要把设备id传给Electron
+     * Electron再生成一个BluetoothDevice对象，返回到navigator.bluetooth.requestDevice，并在那里回调
+     * connectDevice来连接设备。
+     * @param {number} id - BluetoothDevice Object
      */
     connectPeripheral = (id) => {
+        const event = new CustomEvent('onSelectedBluetoothDevice', { detail: id });
+        document.dispatchEvent(event);
+    }
+
+    /**
+     * Connect the device
+     * @param {BluetoothDevice} device - BluetoothDevice Object
+     */
+    connectDevice = (device) => {
         let onConnected = (server) => {
             this._bleServer = server;
             this._connected = true;
-            this._deviceId = id;
-            this._deviceName = this._devices[id].name;
+            this._deviceId = device.id;
+            this._deviceName = device.name;
             console.log("connected device name: " + this._deviceName);
             this._runtime.emit(this._runtime.constructor.PERIPHERAL_CONNECTED);
             this._connectCallback();
@@ -86,12 +152,8 @@ class WebBle {
                 }
             }, 100);
         }
-        // let onDisconnected = () => {
-        //     console.log("onDisconnected");
-        //     this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
-        // }
-        this._devices[id].addEventListener('gattserverdisconnected', this._handleDisconnectError);
-        this._devices[id].gatt.connect().then(onConnected, this._handleError);
+        device.addEventListener('gattserverdisconnected', this._handleDisconnectError);
+        device.gatt.connect().then(onConnected, this._handleError);
     }
 
     /**
@@ -107,7 +169,6 @@ class WebBle {
         this._bleServer = null;
         this._deviceId = null;
         this._deviceName = null;
-        this._devices = {};
         this._onCharacteristicChangedCallbacks = {};
         clearInterval(this._onCharacteristicChangedTimer);
         this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
