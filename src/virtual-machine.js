@@ -292,6 +292,27 @@ class VirtualMachine extends EventEmitter {
     }
 
     /**
+     * Get the version of the connected peripheral.
+     */
+    getPeripheralFirmwareVersion (extensionId) {
+        this.runtime.getPeripheralFirmwareVersion(extensionId);
+    }
+
+    /**
+     * Get the version of the latest firmware.
+     */
+    getLatestFirmwareVersion (extensionId) {
+        this.runtime.getLatestFirmwareVersion(extensionId);
+    }
+
+    /**
+     * Flash latest firmware to a peripheral.
+     */
+    flashLatestFirmware (extensionId) {
+        this.runtime.flashLatestFirmware(extensionId);
+    }
+
+    /**
      * Get device name
      * @param {string} extensionId - the id of the extension.
      * @return {string} - the name of the connected peripheral.

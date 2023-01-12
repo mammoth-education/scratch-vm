@@ -66,7 +66,7 @@ class WebBle {
         this._bleServer = null;
 
         //  Electron的奇葩实现
-        if (cordova && cordova.platformId === "electron") {
+        if (navigator.userAgent.indexOf("Electron/") > 0) {
             document.addEventListener('onBluetoothDevicesFound', (event) => {
                 let deviceList = event.detail;
                 this._onDiscoverDevice(deviceList);

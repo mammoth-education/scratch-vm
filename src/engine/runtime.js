@@ -1543,6 +1543,33 @@ class Runtime extends EventEmitter {
     }
 
     /**
+     * Get the version of the connected peripheral.
+     */
+    getPeripheralFirmwareVersion (extensionId) {
+        if (this.peripheralExtensions[extensionId]) {
+            deviceName = this.peripheralExtensions[extensionId].getPeripheralFirmwareVersion();
+        }
+    }
+
+    /**
+     * Get the version of the latest firmware.
+     */
+    getLatestFirmwareVersion (extensionId) {
+        if (this.peripheralExtensions[extensionId]) {
+            deviceName = this.peripheralExtensions[extensionId].getLatestFirmwareVersion();
+        }
+    }
+
+    /**
+     * Flash latest firmware to a peripheral.
+     */
+    flashLatestFirmware (extensionId) {
+        if (this.peripheralExtensions[extensionId]) {
+            deviceName = this.peripheralExtensions[extensionId].flashLatestFirmware();
+        }
+    }
+
+    /**
      * Get device name
      * @param {string} extensionId - the id of the extension.
      * @return {string} - the name of the device.

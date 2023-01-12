@@ -16,6 +16,14 @@ if (navigator.bluetooth) {
     BLE = require('../../io/ble');
 }
 
+const LATEST_FIRMWARE_VERSION = "1.0.0";
+const FIRMWARE = {
+    '0x1000': 'kaka_firmware/kaka_mammoth_coding_firmware_1.0.0.bootloader.bin',
+    '0x8000': 'kaka_firmware/kaka_mammoth_coding_firmware_1.0.0.partitions.bin',
+    '0xe000': 'kaka_firmware/boot_app0.bin',
+    '0x10000': 'kaka_firmware/kaka_mammoth_coding_firmware_1.0.0.bootloader.bin',
+}
+
 const DeviceSettings = {
     AnalogResolution: 10,
     PWMResolution: 8,
@@ -56,6 +64,7 @@ const BLEService = {
 const BLECharacteristic = {
     ATTACHED_IO: '00001002-2d6f-4fcd-aff9-7e305f8fce48',
     LOW_VOLTAGE_ALERT: '00001003-2d6f-4fcd-aff9-7e305f8fce48',
+    VERSION: '00001004-2d6f-4fcd-aff9-7e305f8fce48',
     INPUT_VALUES: '00002002-2d6f-4fcd-aff9-7e305f8fce48',
     INPUT_COMMAND: '00002003-2d6f-4fcd-aff9-7e305f8fce48',
     OUTPUT_COMMAND: '00002004-2d6f-4fcd-aff9-7e305f8fce48'
@@ -203,6 +212,28 @@ class Kaka {
         this.stopDevice[KakaDevice.Buzzer] = this.stopBuzzer;
         this.stopDevice[KakaDevice.LTMotor] = this.stopLTMotor;
         this.stopDevice[KakaDevice.SegmentDisplay] = this.stopSegmentDisplay;
+    }
+
+    /**
+     * Get the firmware version of the connected peripheral.
+     */
+    getPeripheralFirmwareVersion () {
+        return this._ble.read(BLEService.DEVICE_SERVICE, BLECharacteristic.VERSION);
+    }
+
+    /**
+     * Get the version of the latest firmware.
+     */
+    getLatestFirmwareVersion () {
+        return LATEST_FIRMWARE_VERSION;
+    }
+
+    /**
+     * Flash latest firmware to a peripheral.
+     */
+    flashLatestFirmware () {
+        let event = new CustomEvent('onFlashESP32', {detail:{firmware: FIRMWARE}});
+        document.dispatchEvent(event);
     }
 
     /**
@@ -1139,14 +1170,16 @@ class KakaBlocks {
                                 id: 'kaka.digitalOutputLevels.high',
                                 default: 'HIGH',
                                 description: 'Logic level high'
-                            }), value: 1
+                            }),
+                            value: 1
                         },
                         {
                             text: formatMessage({
                                 id: 'kaka.digitalOutputLevels.low',
                                 default: 'LOW',
                                 description: 'Logic level low'
-                            }), value: 0
+                            }),
+                            value: 0
                         },
                     ]
                 },
@@ -1177,14 +1210,16 @@ class KakaBlocks {
                                 id: 'kaka.soundLevelOps.gt',
                                 default: '>',
                                 description: 'Sound level greater than'
-                            }), value: '>'
+                            }),
+                            value: '>'
                         },
                         {
                             text: formatMessage({
                                 id: 'kaka.soundLevelOps.lt',
                                 default: '<',
                                 description: 'Sound level less than'
-                            }), value: '<'
+                            }),
+                            value: '<'
                         },
                     ]
                 },
@@ -1196,14 +1231,16 @@ class KakaBlocks {
                                 id: 'kaka.buttons.a',
                                 default: 'A',
                                 description: 'Button A'
-                            }), value: 0
+                            }),
+                            value: 0
                         },
                         {
                             text: formatMessage({
                                 id: 'kaka.buttons.b',
                                 default: 'B',
                                 description: 'Button B'
-                            }), value: 5
+                            }),
+                            value: 5
                         },
                     ]
                 },
@@ -1215,21 +1252,24 @@ class KakaBlocks {
                                 id: 'kaka.buttonEvents.pressed',
                                 default: 'pressed',
                                 description: 'Button pressed'
-                            }), value: 1
+                            }),
+                            value: 1
                         },
                         {
                             text: formatMessage({
                                 id: 'kaka.buttonEvents.released',
                                 default: 'released',
                                 description: 'Button released'
-                            }), value: 0
+                            }),
+                            value: 0
                         },
                         {
                             text: formatMessage({
                                 id: 'kaka.buttonEvents.clicked',
                                 default: 'clicked',
                                 description: 'Button clicked'
-                            }), value: 2
+                            }),
+                            value: 2
                         },
                     ]
                 },
