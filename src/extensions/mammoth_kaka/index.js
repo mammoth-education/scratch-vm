@@ -16,12 +16,12 @@ if (navigator.bluetooth) {
     BLE = require('../../io/ble');
 }
 
-const LATEST_FIRMWARE_VERSION = "1.0.0";
+const LATEST_FIRMWARE_VERSION = "0.0.1";
 const FIRMWARE = {
-    '0x1000': 'kaka_firmware/kaka_mammoth_coding_firmware_1.0.0.bootloader.bin',
-    '0x8000': 'kaka_firmware/kaka_mammoth_coding_firmware_1.0.0.partitions.bin',
+    '0x1000': 'kaka_firmware/kaka_mammoth_coding_firmware.ino.bootloader.bin',
+    '0x8000': 'kaka_firmware/kaka_mammoth_coding_firmware.ino.partitions.bin',
     '0xe000': 'kaka_firmware/boot_app0.bin',
-    '0x10000': 'kaka_firmware/kaka_mammoth_coding_firmware_1.0.0.bootloader.bin',
+    '0x10000': 'kaka_firmware/kaka_mammoth_coding_firmware.ino.bin',
 }
 
 const DeviceSettings = {
@@ -218,7 +218,12 @@ class Kaka {
      * Get the firmware version of the connected peripheral.
      */
     getPeripheralFirmwareVersion () {
-        return this._ble.read(BLEService.DEVICE_SERVICE, BLECharacteristic.VERSION);
+        return new Promise(resolve => {
+            this._ble.read(BLEService.DEVICE_SERVICE, BLECharacteristic.VERSION).then(version => {
+                version = new TextDecoder().decode(version);
+                resolve(version);
+            });
+        })
     }
 
     /**
@@ -945,12 +950,12 @@ class KakaBlocks {
                     blockType: BlockType.HAT,
                     arguments: {
                         BUTTON: {
-                            type: ArgumentType.int,
+                            type: ArgumentType.NUMBER,
                             menu: 'buttons',
                             defaultValue: 0
                         },
                         STATE: {
-                            type: ArgumentType.int,
+                            type: ArgumentType.NUMBER,
                             menu: 'buttonEvents',
                             defaultValue: 1
                         }
@@ -967,7 +972,7 @@ class KakaBlocks {
                     blockType: BlockType.REPORTER,
                     arguments: {
                         BUTTON: {
-                            type: ArgumentType.int,
+                            type: ArgumentType.NUMBER,
                             menu: 'buttons',
                             defaultValue: 0
                         },
@@ -1113,7 +1118,7 @@ class KakaBlocks {
                             defaultValue: 15
                         },
                         ANGLE: {
-                            type: ArgumentType.ANGLE,
+                            type: ArgumentType.NUMBER,
                             defaultValue: 90
                         }
                     }

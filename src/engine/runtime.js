@@ -1547,7 +1547,8 @@ class Runtime extends EventEmitter {
      */
     getPeripheralFirmwareVersion (extensionId) {
         if (this.peripheralExtensions[extensionId]) {
-            deviceName = this.peripheralExtensions[extensionId].getPeripheralFirmwareVersion();
+            let version = this.peripheralExtensions[extensionId].getPeripheralFirmwareVersion();
+            return version;
         }
     }
 
@@ -1556,7 +1557,8 @@ class Runtime extends EventEmitter {
      */
     getLatestFirmwareVersion (extensionId) {
         if (this.peripheralExtensions[extensionId]) {
-            deviceName = this.peripheralExtensions[extensionId].getLatestFirmwareVersion();
+            let version = this.peripheralExtensions[extensionId].getLatestFirmwareVersion();
+            return version;
         }
     }
 
@@ -1565,7 +1567,7 @@ class Runtime extends EventEmitter {
      */
     flashLatestFirmware (extensionId) {
         if (this.peripheralExtensions[extensionId]) {
-            deviceName = this.peripheralExtensions[extensionId].flashLatestFirmware();
+            this.peripheralExtensions[extensionId].flashLatestFirmware();
         }
     }
 
