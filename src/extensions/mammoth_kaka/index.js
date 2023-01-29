@@ -17,12 +17,12 @@ if (navigator.bluetooth) {
     BLE = require('../../io/ble');
 }
 
-const LATEST_FIRMWARE_VERSION = "0.0.1";
+const LATEST_FIRMWARE_VERSION = "0.0.2";
 const FIRMWARE = {
-    '0x1000': 'kaka_firmware/kaka_mammoth_coding_firmware.ino.bootloader.bin',
-    '0x8000': 'kaka_firmware/kaka_mammoth_coding_firmware.ino.partitions.bin',
-    '0xe000': 'kaka_firmware/boot_app0.bin',
-    '0x10000': 'kaka_firmware/kaka_mammoth_coding_firmware.ino.bin',
+    '0x1000': 'kaka-firmware/kaka-mammoth-coding-firmware.ino.bootloader.bin',
+    '0x8000': 'kaka-firmware/kaka-mammoth-coding-firmware.ino.partitions.bin',
+    '0xe000': 'kaka-firmware/boot_app0.bin',
+    '0x10000': 'kaka-firmware/kaka-mammoth-coding-firmware.ino.bin',
 }
 
 /**
