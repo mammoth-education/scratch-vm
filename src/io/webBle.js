@@ -113,6 +113,10 @@ class WebBle {
     _onScanError = (error) => {
         console.log("Scan error");
         console.log(error);
+        this._runtime.emit(this._runtime.constructor.PERIPHERAL_REQUEST_ERROR, {
+            message: error,
+            extensionId: this._extensionId
+        });
     }
 
     /**
@@ -236,6 +240,9 @@ class WebBle {
      * @return {Promise} - a promise from the remote read request.
      */
     read = (serviceId, characteristicId, optStartNotifications = false, onCharacteristicChanged = null) => {
+        if (!this.isConnected()) {
+            return Promise.reject('Not connected to a device');
+        }
         return new Promise((resolve) => {
             this._bleServer.getPrimaryService(serviceId).then(service => {
                 service.getCharacteristic(characteristicId).then(characteristic => {
