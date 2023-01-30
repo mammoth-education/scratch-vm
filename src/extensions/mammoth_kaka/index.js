@@ -798,17 +798,12 @@ class Kaka {
      * Segment display show a value.
      * @param {number} dio - Segment display echo pin.
      * @param {number} clk - Segment display clk pin.
-     * @param {any} value - value to show.
+     * @param {number} value - value to show.
      * @param {number} useLimiter - use limiter or not.
      */
     segmentDisplayShowValue(dio, clk, value, useLimiter = true) {
         data = []
-        let str = "";
-        if (typeof value === 'string') {
-            str = value;
-        } else {
-            str = value.toString();
-        } 
+        str = value.toString();
         for (let i = 0; i < str.length; i++) {
             data.push(str.charCodeAt(i));
         }
