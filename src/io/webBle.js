@@ -64,6 +64,8 @@ class WebBle {
         this._deviceId = null;
         this._deviceName = null;
         this._bleServer = null;
+        this._scanStarted = false;
+        this._services = {};
 
         //  Electron的奇葩实现
         if (navigator.userAgent.indexOf("Electron/") > 0) {
@@ -74,6 +76,7 @@ class WebBle {
         }
         
         navigator.bluetooth.requestDevice(peripheralOptions).then(this.connectDevice, this._onScanError);
+        this._scanStarted = true;
         
 
         // 现在notify不支持，所以写一个定时器，每隔一段时间读取一次，来模拟notify
@@ -111,12 +114,18 @@ class WebBle {
      * @param {object} error - the error object.
      */
     _onScanError = (error) => {
-        console.log("Scan error");
-        console.log(error);
         this._runtime.emit(this._runtime.constructor.PERIPHERAL_REQUEST_ERROR, {
             message: error,
             extensionId: this._extensionId
         });
+    }
+
+    cancelScan = () => {
+        if (navigator.userAgent.indexOf("Electron/") > 0) {
+            const event = new CustomEvent('onCanceledBluetoothDevice', { detail: "Canceled" });
+            document.dispatchEvent(event);
+        }
+        this._scanStarted = false;
     }
 
     /**
@@ -140,7 +149,7 @@ class WebBle {
             this._connected = true;
             this._deviceId = device.id;
             this._deviceName = device.name;
-            console.log("connected device name: " + this._deviceName);
+            this._scanStarted = false;
             this._runtime.emit(this._runtime.constructor.PERIPHERAL_CONNECTED);
             this._connectCallback();
             // 现在notify不支持，左移写一个定时器，每隔一段时间读取一次，来模拟notify
@@ -170,10 +179,14 @@ class WebBle {
         if (this.isConnected()) {
             this._bleServer.disconnect();
         }
+        if (this._scanStarted) {
+            this.cancelScan();
+        }
         this._bleServer = null;
         this._deviceId = null;
         this._deviceName = null;
         this._onCharacteristicChangedCallbacks = {};
+        this._services = {};
         clearInterval(this._onCharacteristicChangedTimer);
         this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
     }
@@ -196,6 +209,51 @@ class WebBle {
     getPeripheralName = () => {
         return this._deviceName;
     }
+
+    /**
+     * Get Service
+     * @param {number} serviceId - the ble service to read.
+     * @return {Promise} - a promise from the remote read request.
+     * @private
+     */
+    _getService = (serviceId) => {
+        return new Promise((resolve, reject) => {
+            if (this._services[serviceId]) {
+                resolve(this._services[serviceId].service);
+            } else {
+                this._bleServer.getPrimaryService(serviceId).then((service) => {
+                    this._services[serviceId] = {
+                        service: service,
+                        characteristics: {},
+                    };
+                    resolve(service);
+                }, this._handleError);
+            }
+        });
+    }
+
+    /**
+     * Get Characteristic
+     * @param {number} serviceId - the ble service to read.
+     * @param {number} characteristicId - the ble characteristic to read.
+     * @return {Promise} - a promise from the remote read request.
+     * @private
+     */
+    _getCharacteristic = (serviceId, characteristicId) => {
+        return new Promise((resolve, reject) => {
+            this._getService(serviceId).then((service) => {
+                if (this._services[serviceId].characteristics[characteristicId]) {
+                    resolve(this._services[serviceId].characteristics[characteristicId]);
+                } else {
+                    service.getCharacteristic(characteristicId).then((characteristic) => {
+                        this._services[serviceId].characteristics[characteristicId] = characteristic;
+                        resolve(characteristic);
+                    }, this._handleError);
+                }
+            });
+        });
+    }
+            
 
     /**
      * Start receiving notifications from the specified ble service.
@@ -244,16 +302,14 @@ class WebBle {
             return Promise.reject('Not connected to a device');
         }
         return new Promise((resolve) => {
-            this._bleServer.getPrimaryService(serviceId).then(service => {
-                service.getCharacteristic(characteristicId).then(characteristic => {
-                    if (optStartNotifications) {
-                        this.startNotifications(serviceId, characteristicId, onCharacteristicChanged);
-                    }
-                    characteristic.readValue().then(data => {
-                        var arraybuffer = data.buffer;
-                        var uint8buffer = new Uint8Array(arraybuffer);
-                        resolve(uint8buffer);
-                    }, this._handleDisconnectError);
+            this._getCharacteristic(serviceId, characteristicId).then((characteristic) => {
+                if (optStartNotifications) {
+                    this.startNotifications(serviceId, characteristicId, onCharacteristicChanged);
+                }
+                characteristic.readValue().then(data => {
+                    var arraybuffer = data.buffer;
+                    var uint8buffer = new Uint8Array(arraybuffer);
+                    resolve(uint8buffer);
                 }, this._handleDisconnectError);
             }, this._handleDisconnectError);
         });
@@ -270,14 +326,12 @@ class WebBle {
     write = (serviceId, characteristicId, message, withResponse = null) => {
         return new Promise((resolve) => {
             let data = Uint8Array.from(message);
-            this._bleServer.getPrimaryService(serviceId).then(service => {
-                service.getCharacteristic(characteristicId).then(characteristic => {
-                    if (withResponse) {
-                        characteristic.writeValueWithResponse(data.buffer).then(resolve, this._handleDisconnectError);
-                    } else {
-                        characteristic.writeValueWithoutResponse(data.buffer).then(resolve, this._handleDisconnectError);
-                    }
-                }, this._handleDisconnectError);
+            this._getCharacteristic(serviceId, characteristicId).then((characteristic) => {
+                if (withResponse) {
+                    characteristic.writeValueWithResponse(data.buffer).then(resolve, this._handleDisconnectError);
+                } else {
+                    characteristic.writeValueWithoutResponse(data.buffer).then(resolve, this._handleDisconnectError);
+                }
             }, this._handleDisconnectError);
         });
     }
@@ -288,7 +342,7 @@ class WebBle {
         if (e.code === 19) {
             return;
         }
-        console.log("_handleDisconnectError", e);
+        console.warn("_handleDisconnectError", e);
 
         this.disconnect();
 
@@ -303,7 +357,7 @@ class WebBle {
     }
 
     _handleError = (e) => {
-        console.log(e);
+        console.warn(e);
         this._runtime.emit(this._runtime.constructor.PERIPHERAL_REQUEST_ERROR, {
             message: `Lost connection to`,
             extensionId: this._extensionId

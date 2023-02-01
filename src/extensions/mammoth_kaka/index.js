@@ -7,13 +7,10 @@ const RateLimiter = require('../../util/rateLimiter.js');
 
 let BLE = null;
 if (navigator.bluetooth) {
-    console.log("BLE: webBle");
     BLE = require('../../io/webBle');
 } else if (window.cordova) {
-    console.log("BLE: cordova");
     BLE = require('../../io/cordovaBle');
 } else {
-    console.log("BLE: scratch ble");
     BLE = require('../../io/ble');
 }
 
@@ -29,7 +26,13 @@ const FIRMWARE = {
  * 蓝牙发送每秒最多传输的次数，用于蓝牙发送速率限制
  * @type {number}
  */
-const BLESendRateMax = 20;
+const BLESendRateMax = 10;
+
+/**
+ * A time interval to wait (in milliseconds) while a block that sends a BLE message is running.
+ * @type {number}
+ */
+const BLESendInterval = 100;
 
 /**
  * 读取数据的间隔时间
@@ -438,7 +441,9 @@ class Kaka {
         if (!this.isConnected()) return Promise.resolve();
 
         if (useLimiter) {
-            if (!this._rateLimiter.okayToSend()) return Promise.resolve();
+            if (!this._rateLimiter.okayToSend()) {
+                return Promise.resolve();
+            }
         }
 
         return this._ble.write(
@@ -494,7 +499,6 @@ class Kaka {
      * 在连接成功后，开始监听输入数据
      */
     _onConnect() {
-        console.log("kaka/index.js onConnected");
         this._ble.startNotifications(BLEService.IO_SERVICE, BLECharacteristic.INPUT_VALUES, this._onInput.bind(this));
     }
 
@@ -526,19 +530,15 @@ class Kaka {
                 this._ble.read(BLEService.IO_SERVICE, BLECharacteristic.INPUT_VALUES).then(data => {
                     let arraybuffer = data.buffer;
                     let uint8buffer = new Uint8Array(arraybuffer);
-                    console.log("读到的数据: ", uint8buffer);
-                    console.log("设备: ", device);
                     let receiveID = uint8buffer[0];
                     if (receiveID === device.id) {
                         let valueLength = uint8buffer[1];
                         if (valueLength === 1) {
                             let value = uint8buffer[2];
-                            console.log("读到的数据: ", value);
                             this._devices[device.id].value = value;
                             resolve(value);
                         } else if (valueLength === 2) {
                             let value = uint8buffer[2] << 8 | uint8buffer[3];
-                            console.log("读到的数据: ", value);
                             this._devices[device.id].value = value;
                             resolve(value);
                         } else {
@@ -665,8 +665,7 @@ class Kaka {
             pins,
             values
         );
-        console.log("Command:", command);
-        this.send(BLECharacteristic.OUTPUT_COMMAND, command, useLimiter);
+        return this.send(BLECharacteristic.OUTPUT_COMMAND, command, useLimiter);
     }
 
     /**
@@ -692,7 +691,7 @@ class Kaka {
      * @param {number} value - the value to write.
      */
     setDigitalOutput(pin, value, useLimiter = true) {
-        this._outputDevice(KakaDevice.DigitalOutput, KakaAction.DigitalOutput, [pin], [value], useLimiter);
+        return this._outputDevice(KakaDevice.DigitalOutput, KakaAction.DigitalOutput, [pin], [value], useLimiter);
     }
 
     /**
@@ -713,7 +712,7 @@ class Kaka {
         if (value > DeviceSettings.PWMMax) {
             value = DeviceSettings.PWMMax;
         }
-        this._outputDevice(KakaDevice.PWM, KakaAction.PWMPulseWidthPercent, [pin], [value], useLimiter);
+        return this._outputDevice(KakaDevice.PWM, KakaAction.PWMPulseWidthPercent, [pin], [value], useLimiter);
     }
 
     /**
@@ -743,14 +742,11 @@ class Kaka {
      * @param {number} pin - the pin to read from.
      */
     getButtonEvent(pin) {
-        console.log("getButtonEvent: ", pin);
         return new Promise((resolve, reject) => {
             this.getDigitalInput(pin).then(value => {
-                console.log("getButtonEvent resolve: ", pin, value);
                 this.buttonEvent[pin] = value;
                 resolve(value);
-            }, 
-            () => console.log("getButtonEvent reject: ", pin));
+            });
         });
     }
 
@@ -760,8 +756,7 @@ class Kaka {
      * @param {number} useLimiter - use limiter or not.
      */
     buzzerPlayTone(tone, useLimiter = true) {
-        console.log(`buzzerPlayTone tone: ${tone}`);
-        this._outputDevice(KakaDevice.Buzzer, KakaAction.BuzzerPlayTone, [], [tone >> 8, tone & 0xFF], useLimiter);
+        return this._outputDevice(KakaDevice.Buzzer, KakaAction.BuzzerPlayTone, [], [tone >> 8, tone & 0xFF], useLimiter);
     }
 
     /**
@@ -771,8 +766,7 @@ class Kaka {
      * @param {number} useLimiter - use limiter or not.
      */
     buzzerPlayToneFor(tone, duration, useLimiter = true) {
-        console.log(`buzzerPlayToneFor tone: ${tone} duration: ${duration}`)
-        this._outputDevice(KakaDevice.Buzzer, KakaAction.BuzzerPlayToneFor, [], [tone >> 8, tone & 0xFF, duration >> 8, duration & 0xFF], useLimiter);
+        return this._outputDevice(KakaDevice.Buzzer, KakaAction.BuzzerPlayToneFor, [], [tone >> 8, tone & 0xFF, duration >> 8, duration & 0xFF], useLimiter);
     }
 
     /**
@@ -780,8 +774,7 @@ class Kaka {
      * @param {number} useLimiter - use limiter or not.
      */
     buzzerStop(useLimiter = true) {
-        console.log(`buzzerStop`)
-        this._outputDevice(KakaDevice.Buzzer, KakaAction.BuzzerStop, [], [], useLimiter);
+        return this._outputDevice(KakaDevice.Buzzer, KakaAction.BuzzerStop, [], [], useLimiter);
     }
 
     /**
@@ -807,7 +800,7 @@ class Kaka {
         for (let i = 0; i < str.length; i++) {
             data.push(str.charCodeAt(i));
         }
-        this._outputDevice(KakaDevice.SegmentDisplay, KakaAction.SegmentDisplayShowValue, [dio, clk], data, useLimiter);
+        return this._outputDevice(KakaDevice.SegmentDisplay, KakaAction.SegmentDisplayShowValue, [dio, clk], data, useLimiter);
     }
 
     /**
@@ -817,7 +810,7 @@ class Kaka {
      * @param {string} useLimiter - use limiter or not.
      */
     segmentDisplayClear(dio, clk, useLimiter = true) {
-        this._outputDevice(KakaDevice.SegmentDisplay, KakaAction.SegmentDisplayClear, [dio, clk], [], useLimiter);
+        return this._outputDevice(KakaDevice.SegmentDisplay, KakaAction.SegmentDisplayClear, [dio, clk], [], useLimiter);
     }
 
     /**
@@ -827,7 +820,6 @@ class Kaka {
      * @param {string} useLimiter - use limiter or not.
      */
     colorSensorGetColor(sda, scl, useLimiter = true) {
-        console.log("colorSensorGetColor");
         return this._inputDevice(KakaDevice.ColorSensor, KakaAction.ColorSensorGetColor, [sda, scl], useLimiter);
     }
 
@@ -838,7 +830,7 @@ class Kaka {
      * @param {string} useLimiter - use limiter or not.
      */
     setMotorStatus(pin, state, useLimiter = true) {
-        this._outputDevice(KakaDevice.Motor, KakaAction.MotorSetStatus, [pin], [state], useLimiter);
+        return this._outputDevice(KakaDevice.Motor, KakaAction.MotorSetStatus, [pin], [state], useLimiter);
     }
 
     /**
@@ -849,7 +841,7 @@ class Kaka {
      */
     setServoAngle(pin, angle, useLimiter = true) {
         angle = MathUtil.clamp(angle, 0, 180);
-        this._outputDevice(KakaDevice.Servo, KakaAction.ServoSetAngle, [pin], [angle], useLimiter);
+        return this._outputDevice(KakaDevice.Servo, KakaAction.ServoSetAngle, [pin], [angle], useLimiter);
     }
 
     /**
@@ -861,8 +853,7 @@ class Kaka {
      */
     setLTMotorValue(pinA, pinB, value, useLimiter = true) {
         value = MathUtil.clamp(value, -100, 100);
-        console.log(`setLTMotorValue pinA: ${pinA} pinB: ${pinB} value: ${value}`);
-        this._outputDevice(KakaDevice.LTMotor, KakaAction.LTMotorSetValue, [pinA, pinB], [value], useLimiter);
+        return this._outputDevice(KakaDevice.LTMotor, KakaAction.LTMotorSetValue, [pinA, pinB], [value], useLimiter);
     }
 
 }
@@ -1428,6 +1419,12 @@ class KakaBlocks {
         let pin = Cast.toNumber(args.PIN);
         let level = Cast.toNumber(args.LEVEL);
         this._peripheral.setDigitalOutput(pin, level);
+
+        return new Promise(resolve => {
+            window.setTimeout(() => {
+                resolve();
+            }, BLESendInterval);
+        });
     }
 
     getDigitalInput(args) {
@@ -1439,6 +1436,12 @@ class KakaBlocks {
         let pin = Cast.toNumber(args.PIN);
         let value = Cast.toNumber(args.VALUE);
         this._peripheral.setPwmOutput(pin, value);
+
+        return new Promise(resolve => {
+            window.setTimeout(() => {
+                resolve();
+            }, BLESendInterval);
+        });
     }
 
     getAnalogInput(args) {
@@ -1460,7 +1463,6 @@ class KakaBlocks {
         let level = Cast.toNumber(args.LEVEL);
         this._peripheral.getSoundLevel();
         let soundLevel = this._peripheral.soundLevel;
-        console.log('soundLevel', soundLevel)
         if (args.OP === '>') {
             return soundLevel > level;
         } else {
@@ -1489,10 +1491,22 @@ class KakaBlocks {
         let duration = Cast.toNumber(args.DURATION) * 1000;
         let tone = this._noteToTone(note);
         this._peripheral.buzzerPlayToneFor(tone, duration);
+
+        return new Promise(resolve => {
+            window.setTimeout(() => {
+                resolve();
+            }, duration);
+        });
     }
 
     buzzerStop() {
         this._peripheral.buzzerStop();
+
+        return new Promise(resolve => {
+            window.setTimeout(() => {
+                resolve();
+            }, BLESendInterval);
+        });
     }
 
     ultrasonicDistance(args) {
@@ -1506,12 +1520,24 @@ class KakaBlocks {
         let clk = Cast.toNumber(args.PORT.split(',')[1]);
         let value = args.VALUE;
         this._peripheral.segmentDisplayShowValue(dio, clk, value);
+
+        return new Promise(resolve => {
+            window.setTimeout(() => {
+                resolve();
+            }, BLESendInterval);
+        });
     }
 
     segmentDisplayClear(args) {
         let dio = Cast.toNumber(args.PORT.split(',')[0]);
         let clk = Cast.toNumber(args.PORT.split(',')[1]);
         this._peripheral.segmentDisplayClear(dio, clk);
+
+        return new Promise(resolve => {
+            window.setTimeout(() => {
+                resolve();
+            }, BLESendInterval);
+        });
     }
 
     colorSensorGetColor(args) {
@@ -1528,12 +1554,24 @@ class KakaBlocks {
         let pin = Cast.toNumber(args.PORT.split(',')[1]);
         let status = Cast.toNumber(args.ONOFF);
         this._peripheral.setMotorStatus(pin, status);
+
+        return new Promise(resolve => {
+            window.setTimeout(() => {
+                resolve();
+            }, BLESendInterval);
+        });
     }
 
     setServoAngle(args) {
         let pin = Cast.toNumber(args.PIN);
         let angle = Cast.toNumber(args.ANGLE);
         this._peripheral.setServoAngle(pin, angle);
+
+        return new Promise(resolve => {
+            window.setTimeout(() => {
+                resolve();
+            }, BLESendInterval);
+        });
     }
 
     setLTMotorValue(args) {
@@ -1542,6 +1580,12 @@ class KakaBlocks {
         let value = Cast.toNumber(args.VALUE);
         value = MathUtil.clamp(value, -100, 100);
         this._peripheral.setLTMotorValue(pinA, pinB, value);
+
+        return new Promise(resolve => {
+            window.setTimeout(() => {
+                resolve();
+            }, BLESendInterval);
+        });
     }
 
     /**
