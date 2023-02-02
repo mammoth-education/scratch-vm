@@ -123,7 +123,11 @@ class CordovaBle {
      * @return {Promise} - a promise from the remote startNotifications request.
      */
     startNotifications = (serviceId, characteristicId, onCharacteristicChanged = null) => {
-        ble.startNotification(this._deviceId, serviceId, characteristicId, onCharacteristicChanged, this._handleDisconnectError);
+        ble.startNotification(this._deviceId, serviceId, characteristicId, (arrayBuffer) => {
+            var uint8buffer = new Uint8Array(arrayBuffer);
+            var array = Array.from(uint8buffer);
+            onCharacteristicChanged(array);
+        }, this._handleDisconnectError);
         return Promise.resolve();
     }
 
@@ -142,7 +146,8 @@ class CordovaBle {
             }
             ble.read(this._deviceId, serviceId, characteristicId, (arraybuffer => {
                 var uint8buffer = new Uint8Array(arraybuffer);
-                resolve(uint8buffer);
+                var array = Array.from(uint8buffer);
+                resolve(array);
             }), this._handleDisconnectError);
         });
     }
@@ -151,17 +156,18 @@ class CordovaBle {
      * Write data to the specified ble service.
      * @param {number} serviceId - the ble service to write.
      * @param {number} characteristicId - the ble characteristic to write.
-     * @param {string} message - the message to send.
+     * @param {array} data - the data to send.
      * @param {boolean} withResponse - if true, resolve after peripheral's response.
      * @return {Promise} - a promise from the remote send request.
      */
-    write = (serviceId, characteristicId, message, withResponse = null) => {
-        let data = Uint8Array.from(message);
+    write = (serviceId, characteristicId, data, withResponse = null) => {
+        let uint8Array = Uint8Array.from(data);
+        let arrayBuffer = uint8Array.buffer;
         return new Promise((resolve) => {
             if (withResponse) {
-                ble.write(this._deviceId, serviceId, characteristicId, data.buffer, resolve, this._handleDisconnectError);
+                ble.write(this._deviceId, serviceId, characteristicId, arrayBuffer, resolve, this._handleDisconnectError);
             } else {
-                ble.writeWithoutResponse(this._deviceId, serviceId, characteristicId, data.buffer, resolve, this._handleDisconnectError);
+                ble.writeWithoutResponse(this._deviceId, serviceId, characteristicId, arrayBuffer, resolve, this._handleDisconnectError);
             }
         });
     }

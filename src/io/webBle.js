@@ -42,6 +42,8 @@
 
 const formatMessage = require("format-message");
 
+// 设定是否使用模拟的notify方式，因为目前测试无法使用原生notify
+let VIRTUAL_NOTIFY = true;
 
 class WebBle {
     /**
@@ -80,8 +82,10 @@ class WebBle {
         
 
         // 现在notify不支持，所以写一个定时器，每隔一段时间读取一次，来模拟notify
-        this._onCharacteristicChangedCallbacks = {};
-        this._onCharacteristicChangedTimer = null;
+        if (VIRTUAL_NOTIFY) {
+            this._onCharacteristicChangedCallbacks = {};
+            this._onCharacteristicChangedTimer = null;
+        }
     }
 
     /**
@@ -139,6 +143,21 @@ class WebBle {
         document.dispatchEvent(event);
     }
 
+    _startNotifyTimer = () => {
+        // 现在notify不支持，所以写一个定时器，每隔一段时间读取一次，来模拟notify
+        this._onCharacteristicChangedTimer = setInterval(() => {
+            for (let service in this._onCharacteristicChangedCallbacks) {
+                for (let characteristic in this._onCharacteristicChangedCallbacks[service]) {
+                    this.read(service, characteristic).then((data) => {
+                        for (let callback of this._onCharacteristicChangedCallbacks[service][characteristic]) {
+                            callback(data);
+                        }
+                    });
+                }
+            }
+        }, 100);
+    }
+
     /**
      * Connect the device
      * @param {BluetoothDevice} device - BluetoothDevice Object
@@ -152,18 +171,9 @@ class WebBle {
             this._scanStarted = false;
             this._runtime.emit(this._runtime.constructor.PERIPHERAL_CONNECTED);
             this._connectCallback();
-            // 现在notify不支持，左移写一个定时器，每隔一段时间读取一次，来模拟notify
-            this._onCharacteristicChangedTimer = setInterval(() => {
-                for (let service in this._onCharacteristicChangedCallbacks) {
-                    for (let characteristic in this._onCharacteristicChangedCallbacks[service]) {
-                        this.read(service, characteristic).then((data) => {
-                            for (let callback of this._onCharacteristicChangedCallbacks[service][characteristic]) {
-                                callback(data);
-                            }
-                        });
-                    }
-                }
-            }, 100);
+            if (VIRTUAL_NOTIFY) {
+                this._startNotifyTimer();
+            }
         }
         device.addEventListener('gattserverdisconnected', this._handleDisconnectError);
         device.gatt.connect().then(onConnected, this._handleError);
@@ -185,9 +195,11 @@ class WebBle {
         this._bleServer = null;
         this._deviceId = null;
         this._deviceName = null;
-        this._onCharacteristicChangedCallbacks = {};
         this._services = {};
-        clearInterval(this._onCharacteristicChangedTimer);
+        if (VIRTUAL_NOTIFY) {
+            this._onCharacteristicChangedCallbacks = {};
+            clearInterval(this._onCharacteristicChangedTimer);
+        }
         this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
     }
 
@@ -264,27 +276,29 @@ class WebBle {
      */
     startNotifications = (serviceId, characteristicId, onCharacteristicChanged = null) => {
         return new Promise((resolve, reject) => {
-            // 现在notify不支持，左移写一个定时器，每隔一段时间读取一次，来模拟notify
-            // 正常做法
-            // this._bleServer.getPrimaryService(serviceId).then(service => {
-            //     service.getCharacteristic(characteristicId).then(characteristic => {
-            //         characteristic.startNotifications().then(() => {
-            //             if (onCharacteristicChanged) {
-            //                 characteristic.addEventListener('oncharacteristicvaluechanged', onCharacteristicChanged);
-            //                 resolve();
-            //             }
-            //         }, reject);
-            //     }, reject);
-            // }, reject);
+            // 现在notify不支持，所以写一个定时器，每隔一段时间读取一次，来模拟notify
             // 模拟notify
-            if (!this._onCharacteristicChangedCallbacks[serviceId]) {
-                this._onCharacteristicChangedCallbacks[serviceId] = {};
-            }
-            if (!this._onCharacteristicChangedCallbacks[serviceId][characteristicId]) {
-                this._onCharacteristicChangedCallbacks[serviceId][characteristicId] = [];
-            }
-            if (onCharacteristicChanged) {
-                this._onCharacteristicChangedCallbacks[serviceId][characteristicId].push(onCharacteristicChanged);
+            if (VIRTUAL_NOTIFY) {
+                if (!this._onCharacteristicChangedCallbacks[serviceId]) {
+                    this._onCharacteristicChangedCallbacks[serviceId] = {};
+                }
+                if (!this._onCharacteristicChangedCallbacks[serviceId][characteristicId]) {
+                    this._onCharacteristicChangedCallbacks[serviceId][characteristicId] = [];
+                }
+                if (onCharacteristicChanged) {
+                    this._onCharacteristicChangedCallbacks[serviceId][characteristicId].push(onCharacteristicChanged);
+                }
+                resolve();
+            } else {
+                // 正常做法
+                this._getCharacteristic(serviceId, characteristicId).then((characteristic) => {
+                    characteristic.startNotifications().then(() => {
+                        if (onCharacteristicChanged) {
+                            characteristic.addEventListener('oncharacteristicvaluechanged', onCharacteristicChanged);
+                            resolve();
+                        }
+                    }, reject);
+                }, reject);
             }
         });
     }
@@ -295,7 +309,7 @@ class WebBle {
      * @param {number} characteristicId - the ble characteristic to read.
      * @param {boolean} optStartNotifications - whether to start receiving characteristic change notifications.
      * @param {object} onCharacteristicChanged - callback for characteristic change notifications.
-     * @return {Promise} - a promise from the remote read request.
+     * @return {Promise} - a promise from the remote read request with array data.
      */
     read = (serviceId, characteristicId, optStartNotifications = false, onCharacteristicChanged = null) => {
         if (!this.isConnected()) {
@@ -306,10 +320,11 @@ class WebBle {
                 if (optStartNotifications) {
                     this.startNotifications(serviceId, characteristicId, onCharacteristicChanged);
                 }
-                characteristic.readValue().then(data => {
-                    var arraybuffer = data.buffer;
-                    var uint8buffer = new Uint8Array(arraybuffer);
-                    resolve(uint8buffer);
+                characteristic.readValue().then(dataView => {
+                    let arrayBuffer = dataView.buffer;
+                    let uint8buffer = new Uint8Array(arrayBuffer);
+                    var array = Array.from(uint8buffer);
+                    resolve(array);
                 }, this._handleDisconnectError);
             }, this._handleDisconnectError);
         });
@@ -319,18 +334,19 @@ class WebBle {
      * Write data to the specified ble service.
      * @param {number} serviceId - the ble service to write.
      * @param {number} characteristicId - the ble characteristic to write.
-     * @param {string} message - the message to send.
+     * @param {array} data - the data to send.
      * @param {boolean} withResponse - if true, resolve after peripheral's response.
      * @return {Promise} - a promise from the remote send request.
      */
-    write = (serviceId, characteristicId, message, withResponse = null) => {
+    write = (serviceId, characteristicId, data, withResponse = null) => {
         return new Promise((resolve) => {
-            let data = Uint8Array.from(message);
+            let uint8Array = Uint8Array.from(data);
+            let arrayBuffer = uint8Array.buffer;
             this._getCharacteristic(serviceId, characteristicId).then((characteristic) => {
                 if (withResponse) {
-                    characteristic.writeValueWithResponse(data.buffer).then(resolve, this._handleDisconnectError);
+                    characteristic.writeValueWithResponse(arrayBuffer).then(resolve, this._handleDisconnectError);
                 } else {
-                    characteristic.writeValueWithoutResponse(data.buffer).then(resolve, this._handleDisconnectError);
+                    characteristic.writeValueWithoutResponse(arrayBuffer).then(resolve, this._handleDisconnectError);
                 }
             }, this._handleDisconnectError);
         });

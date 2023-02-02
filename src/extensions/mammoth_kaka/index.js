@@ -267,7 +267,8 @@ class Kaka {
     getPeripheralFirmwareVersion () {
         return new Promise(resolve => {
             this._ble.read(BLEService.DEVICE_SERVICE, BLECharacteristic.VERSION).then(version => {
-                version = new TextDecoder().decode(version);
+                let uint8Array = Uint8Array.from(version);
+                version = new TextDecoder().decode(uint8Array);
                 resolve(version);
             });
         })
@@ -504,14 +505,12 @@ class Kaka {
 
     /**
      * 处理输入通知数据
+     * @param {array} data - 输入通知数据
      */
     _onInput(data) {
-        if (!data || data.length < 2) return;
-        let arraybuffer = data.buffer;
-        let uint8buffer = new Uint8Array(arraybuffer);
-        let id = uint8buffer[0];
-        let valueLength = uint8buffer[1];
-        let valueList = uint8buffer.slice(2, 2 + valueLength);
+        let id = data[0];
+        let valueLength = data[1];
+        let valueList = data.slice(2, 2 + valueLength);
         let value = 0;
         for (let i = 0; i < valueList.length; i++) {
             value += valueList[i] << (i * 8);
