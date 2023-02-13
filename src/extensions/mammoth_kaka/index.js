@@ -6,10 +6,10 @@ const MathUtil = require('../../util/math-util');
 const RateLimiter = require('../../util/rateLimiter.js');
 
 let BLE = null;
-if (navigator.bluetooth) {
-    BLE = require('../../io/webBle');
-} else if (window.cordova) {
+if (window.cordova && (window.cordova.platformId === 'android' || window.cordova.platformId === 'ios')) {
     BLE = require('../../io/cordovaBle');
+} else if (navigator.bluetooth) {
+    BLE = require('../../io/webBle');
 } else {
     BLE = require('../../io/ble');
 }
