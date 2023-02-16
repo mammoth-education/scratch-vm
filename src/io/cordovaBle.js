@@ -93,9 +93,9 @@ class CordovaBle {
         if (this._connected) {
             this._connected = false;
         }
-        if (ble.isConnected(this._peripheralId)) {
-            ble.disconnect(this._peripheralId);
-        }
+        ble.isConnected(this._deviceId, () => {
+            ble.disconnect(this._deviceId);
+        });
         this._deviceId = null;
         this._deviceName = null;
         this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
@@ -164,7 +164,7 @@ class CordovaBle {
         let uint8Array = Uint8Array.from(data);
         let arrayBuffer = uint8Array.buffer;
         return new Promise((resolve) => {
-            if (withResponse) {
+            if (cordova.platformId === 'ios') {
                 ble.write(this._deviceId, serviceId, characteristicId, arrayBuffer, resolve, this._handleDisconnectError);
             } else {
                 ble.writeWithoutResponse(this._deviceId, serviceId, characteristicId, arrayBuffer, resolve, this._handleDisconnectError);
