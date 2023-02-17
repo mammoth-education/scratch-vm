@@ -93,12 +93,16 @@ class CordovaBle {
         if (this._connected) {
             this._connected = false;
         }
-        ble.isConnected(this._deviceId, () => {
-            ble.disconnect(this._deviceId);
-        });
-        this._deviceId = null;
-        this._deviceName = null;
-        this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
+        that = this;
+        ble.withPromises.isConnected(this._deviceId)
+            .then(() => {
+                ble.disconnect(that._deviceId);
+            })
+            .then(() => {
+                this._deviceId = null;
+                this._deviceName = null;
+                this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
+            });
     }
 
     /**
