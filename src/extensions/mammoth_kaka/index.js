@@ -512,6 +512,7 @@ class Kaka {
         let valueLength = data[1];
         let valueList = data.slice(2, 2 + valueLength);
         let value = 0;
+        valueList.reverse();
         for (let i = 0; i < valueList.length; i++) {
             value += valueList[i] << (i * 8);
         }
