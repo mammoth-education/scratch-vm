@@ -14,7 +14,7 @@ if (window.cordova && (window.cordova.platformId === 'android' || window.cordova
     BLE = require('../../io/ble');
 }
 
-const LATEST_FIRMWARE_VERSION = "0.0.2";
+const LATEST_FIRMWARE_VERSION = "0.0.5";
 const FIRMWARE = {
     '0x1000': 'kaka-firmware/kaka-mammoth-coding-firmware.ino.bootloader.bin',
     '0x8000': 'kaka-firmware/kaka-mammoth-coding-firmware.ino.partitions.bin',
@@ -137,17 +137,18 @@ const KakaAction = {
     PWMPulseWidthPercent: 3,
     PWMFrequency: 4,
     AnalogInput: 5,
-    BuzzerPlayTone: 6,
-    BuzzerStop: 7,
-    BuzzerPlayToneFor: 8,
-    UltrasonicGetDistance: 9,
-    SegmentDisplayShowValue: 10,
-    SegmentDisplayClear: 11,
-    ColorSensorGetColor: 12,
-    MotorSetStatus: 13,
-    ServoSetAngle: 14,
-    LTMotorSetValue: 15,
-    GetSoundLevel: 16,
+    AnalogInputFiltered: 6,
+    BuzzerPlayTone: 7,
+    BuzzerStop: 8,
+    BuzzerPlayToneFor: 9,
+    UltrasonicGetDistance: 10,
+    SegmentDisplayShowValue: 11,
+    SegmentDisplayClear: 12,
+    ColorSensorGetColor: 13,
+    MotorSetStatus: 14,
+    ServoSetAngle: 15,
+    LTMotorSetValue: 16,
+    GetSoundLevel: 17,
 }
 
 /**
@@ -408,7 +409,6 @@ class Kaka {
         this.reset();
     }
 
-
     /**
      * 重置设备
      */
@@ -508,61 +508,21 @@ class Kaka {
      * @param {array} data - 输入通知数据
      */
     _onInput(data) {
-        let id = data[0];
-        let valueLength = data[1];
-        let valueList = data.slice(2, 2 + valueLength);
-        let value = 0;
-        valueList.reverse();
-        for (let i = 0; i < valueList.length; i++) {
-            value += valueList[i] << (i * 8);
-        }
-        this._devices[id].value = value;
-    }
-
-    /**
-     * 读取某个设备的数据
-     * @param {object} device   - 设备的信息
-     */
-    _readDevice(device) {
-        return new Promise((resolve, reject) => {
-            const command = this.generateInputCommand(device.type, device.id, device.action, device.pins);
-            this.send(BLECharacteristic.INPUT_COMMAND, command).then(()=>{
-                this._ble.read(BLEService.IO_SERVICE, BLECharacteristic.INPUT_VALUES).then(data => {
-                    let arraybuffer = data.buffer;
-                    let uint8buffer = new Uint8Array(arraybuffer);
-                    let receiveID = uint8buffer[0];
-                    if (receiveID === device.id) {
-                        let valueLength = uint8buffer[1];
-                        if (valueLength === 1) {
-                            let value = uint8buffer[2];
-                            this._devices[device.id].value = value;
-                            resolve(value);
-                        } else if (valueLength === 2) {
-                            let value = uint8buffer[2] << 8 | uint8buffer[3];
-                            this._devices[device.id].value = value;
-                            resolve(value);
-                        } else {
-                            reject("Value length error");
-                        }
-                    }
-                });
-            });
-        });
-    }
-
-    /**
-     * Input data interval handler
-     */
-    _InputIntervalHandler() {
-        let device = this._devices[this._inputDeviceId];
-
-        if (device && Object.values(KakaInputDevice).indexOf(device.type) >= 0) {
-            this._readDevice(device);
-        }
-
-        this._inputDeviceId += 1;
-        if (this._inputDeviceId > this._deviceId) {
-            this._inputDeviceId = 0;
+        let valueLength = data[0];
+        let dataIndex = 0;
+        for (let i = 0; i < valueLength; i++) {
+            let id = data[++dataIndex];
+            let length = data[++dataIndex];
+            let valueList = data.slice(++dataIndex, dataIndex + length);
+            dataIndex += length;
+            let value = 0;
+            valueList.reverse();
+            for (let j = 0; j < valueList.length; j++) {
+                value += valueList[j] << (j * 8);
+            }
+            if (this._devices[id]){
+                this._devices[id].value = value;
+            }
         }
     }
 
@@ -718,10 +678,12 @@ class Kaka {
     /**
      * Analog input.
      * @param {number} pin - the pin to read from.
+     * @param {boolean} filtered - whether to use the filtered value.
      * @return {number} - the value read.
      */
-    getAnalogInput(pin, useLimiter = true) {
-        return this._inputDevice(KakaDevice.Analog, KakaAction.AnalogInput, [pin], useLimiter);
+    getAnalogInput(pin, filtered = false, useLimiter = true) {
+        let action = filtered ? KakaAction.AnalogInputFiltered : KakaAction.AnalogInput;
+        return this._inputDevice(KakaDevice.Analog, action, [pin], useLimiter);
     }
 
     /**
@@ -1005,6 +967,40 @@ class KakaBlocks {
                         }
                     },
                 },
+                // Potentiometer
+                {
+                    opcode: 'getPotentiometer',
+                    text: formatMessage({
+                        id: 'kaka.getPotentiometer',
+                        default: 'Potentiometer [PIN] Value',
+                        description: 'Get value of a potentiometer'
+                    }),
+                    blockType: BlockType.REPORTER,
+                    arguments: {
+                        PIN: {
+                            type: ArgumentType.STRING,
+                            menu: 'analogInputPins',
+                            defaultValue: "13"
+                        },
+                    },
+                },
+                // Light Sensor
+                {
+                    opcode: 'getLightSensor',
+                    text: formatMessage({
+                        id: 'kaka.getLightSensor',
+                        default: 'Light Sensor [PIN] Value',
+                        description: 'Get value of a light sensor'
+                    }),
+                    blockType: BlockType.REPORTER,
+                    arguments: {
+                        PIN: {
+                            type: ArgumentType.STRING,
+                            menu: 'analogInputPins',
+                            defaultValue: "13"
+                        },
+                    },
+                },
                 // When sound level
                 {
                     opcode: 'whenSoundLevel',
@@ -1075,6 +1071,28 @@ class KakaBlocks {
                         },
                     },
                 },
+                // if Button state
+                {
+                    opcode: 'ifButtonPressed',
+                    text: formatMessage({
+                        id: 'kaka.ifButtonPressed',
+                        default: 'Pressing Button [BUTTON] ?',
+                        description: 'if state of a button is pressed/released'
+                    }),
+                    blockType: BlockType.BOOLEAN,
+                    arguments: {
+                        BUTTON: {
+                            type: ArgumentType.STRING,
+                            menu: 'buttons',
+                            defaultValue: "0"
+                        },
+                        STATE: {
+                            type: ArgumentType.STRING,
+                            menu: 'buttonEvents',
+                            defaultValue: "0"
+                        }
+                    },
+                },
                 // buzzerPlayNoteFor
                 {
                     opcode: 'buzzerPlayNoteFor',
@@ -1110,7 +1128,7 @@ class KakaBlocks {
                     opcode: 'ultrasonicDistance',
                     text: formatMessage({
                         id: 'kaka.ultrasonicDistance',
-                        default: 'Ultrasonic Distance(cm) trig, echo:[PORT]',
+                        default: 'Ultrasonic Distance(cm) [PORT]',
                         description: 'Get distance from ultrasonic sensor'
                     }),
                     blockType: BlockType.REPORTER,
@@ -1127,7 +1145,7 @@ class KakaBlocks {
                     opcode: 'segmentDisplayShowValue',
                     text: formatMessage({
                         id: 'kaka.segmentDisplayShowValue',
-                        default: 'Segment Display DIO, CLK:[PORT] show [VALUE]',
+                        default: 'Segment Display [PORT] show [VALUE]',
                         description: 'Show value on segment display'
                     }),
                     blockType: BlockType.COMMAND,
@@ -1143,29 +1161,12 @@ class KakaBlocks {
                         }
                     }
                 },
-                // segmentDisplayClear
-                {
-                    opcode: 'segmentDisplayClear',
-                    text: formatMessage({
-                        id: 'kaka.segmentDisplayClear',
-                        default: 'Segment Display DIO, CLK:[PORT] clear',
-                        description: 'Clear segment display'
-                    }),
-                    blockType: BlockType.COMMAND,
-                    arguments: {
-                        PORT: {
-                            type: ArgumentType.STRING,
-                            menu: 'ports',
-                            defaultValue: "32,33"
-                        },
-                    }
-                },
                 // colorSensorGetColor
                 {
                     opcode: 'colorSensorGetColor',
                     text: formatMessage({
                         id: 'kaka.colorSensorGetColor',
-                        default: 'Color Sensor SCL, SDA[PORT] color',
+                        default: 'Color Sensor [PORT] color',
                         description: 'Get color from Color Sensor'
                     }),
                     blockType: BlockType.REPORTER,
@@ -1470,6 +1471,20 @@ class KakaBlocks {
         }
     }
 
+    getPotentiometer(args) {
+        let pin = Cast.toNumber(args.PIN);
+        let filtered = true;
+        return new Promise(resolve => {
+            this._peripheral.getAnalogInput(pin, filtered).then(value => {
+                resolve(4095 - value);
+            });
+        });
+    }
+
+    getLightSensor(args) {
+        return this.getAnalogInput(args);
+    }
+
     getSoundLevel() {
         return this._peripheral.getSoundLevel();
     }
@@ -1477,13 +1492,21 @@ class KakaBlocks {
     whenButton(args) {
         let pin = Cast.toNumber(args.BUTTON);
         let state = Cast.toNumber(args.STATE);
-        this._peripheral.getDigitalInput(pin)
+        this._peripheral.getDigitalInput(pin);
         return this._peripheral.digitalInputValues[pin] === state;
     }
 
     getButtonState(args) {
         let pin = Cast.toNumber(args.BUTTON);
         return this._peripheral.getDigitalInput(pin);
+    }
+
+    ifButtonPressed(args) {
+        let pin = Cast.toNumber(args.BUTTON);
+        let state = Cast.toNumber(args.STATE);
+        this._peripheral.getDigitalInput(pin);
+        console.log(this._peripheral.digitalInputValues[pin], state);
+        return this._peripheral.digitalInputValues[pin] === state;
     }
 
     buzzerPlayNoteFor(args) {
