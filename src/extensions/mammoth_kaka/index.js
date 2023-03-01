@@ -14,7 +14,7 @@ if (window.cordova && (window.cordova.platformId === 'android' || window.cordova
     BLE = require('../../io/ble');
 }
 
-const LATEST_FIRMWARE_VERSION = "0.0.5";
+const LATEST_FIRMWARE_VERSION = "0.0.6";
 const FIRMWARE = {
     '0x1000': 'kaka-firmware/kaka-mammoth-coding-firmware.ino.bootloader.bin',
     '0x8000': 'kaka-firmware/kaka-mammoth-coding-firmware.ino.partitions.bin',
@@ -858,83 +858,6 @@ class KakaBlocks {
             blockIconURI: iconURI,
             showStatusButton: true,
             blocks: [
-                // setDigitalOutput
-                {
-                    opcode: 'setDigitalOutput',
-                    text: formatMessage({
-                        id: 'kaka.setDigitalOutput',
-                        default: 'Digital Output [PIN] set to [LEVEL]',
-                        description: 'Set a digital output pin to specific level'
-                    }),
-                    blockType: BlockType.COMMAND,
-                    arguments: {
-                        PIN: {
-                            type: ArgumentType.STRING,
-                            menu: 'digitalOutputPins',
-                            defaultValue: "2"
-                        },
-                        LEVEL: {
-                            type: ArgumentType.STRING,
-                            menu: 'digitalOutputLevels',
-                            defaultValue: "1"
-                        }
-                    },
-                },
-                // getDigitalInput
-                {
-                    opcode: 'getDigitalInput',
-                    text: formatMessage({
-                        id: 'kaka.getDigitalInput',
-                        default: 'Digital Input [PIN]',
-                        description: 'Get level of a digital input pin'
-                    }),
-                    blockType: BlockType.REPORTER,
-                    arguments: {
-                        PIN: {
-                            type: ArgumentType.STRING,
-                            menu: 'digitalInputPins',
-                            defaultValue: "0"
-                        },
-                    },
-                },
-                // setPwmOutput
-                {
-                    opcode: 'setPwmOutput',
-                    text: formatMessage({
-                        id: 'kaka.setPwmOutput',
-                        default: 'PWM Output [PIN] set to [VALUE]',
-                        description: 'Set a PWM output pin to specific value(0-255)'
-                    }),
-                    blockType: BlockType.COMMAND,
-                    arguments: {
-                        PIN: {
-                            type: ArgumentType.STRING,
-                            menu: 'pwmOutputPins',
-                            defaultValue: "2"
-                        },
-                        VALUE: {
-                            type: ArgumentType.NUMBER,
-                            defaultValue: 0
-                        }
-                    },
-                },
-                // getAnalogInput
-                {
-                    opcode: 'getAnalogInput',
-                    text: formatMessage({
-                        id: 'kaka.getAnalogInput',
-                        default: 'Analog Input [PIN]',
-                        description: 'Get value of a analog input pin'
-                    }),
-                    blockType: BlockType.REPORTER,
-                    arguments: {
-                        PIN: {
-                            type: ArgumentType.STRING,
-                            menu: 'analogInputPins',
-                            defaultValue: "13"
-                        },
-                    },
-                },
                 // mapValue
                 {
                     opcode: 'mapValue',
@@ -1032,37 +955,15 @@ class KakaBlocks {
                     }),
                     blockType: BlockType.REPORTER,
                 },
-                // When button pressed/released
+                // When button pressed
                 {
                     opcode: 'whenButton',
                     text: formatMessage({
                         id: 'kaka.whenButton',
-                        default: 'When button [BUTTON] [STATE]',
-                        description: 'When a button is pressed/released'
+                        default: 'When button [BUTTON] pressed',
+                        description: 'When a button is pressed'
                     }),
                     blockType: BlockType.HAT,
-                    arguments: {
-                        BUTTON: {
-                            type: ArgumentType.STRING,
-                            menu: 'buttons',
-                            defaultValue: "0"
-                        },
-                        STATE: {
-                            type: ArgumentType.STRING,
-                            menu: 'buttonEvents',
-                            defaultValue: "0"
-                        }
-                    },
-                },
-                // Button state
-                {
-                    opcode: 'getButtonState',
-                    text: formatMessage({
-                        id: 'kaka.getButtonState',
-                        default: 'Button [BUTTON] state',
-                        description: 'Get state of a button'
-                    }),
-                    blockType: BlockType.REPORTER,
                     arguments: {
                         BUTTON: {
                             type: ArgumentType.STRING,
@@ -1194,9 +1095,9 @@ class KakaBlocks {
                             defaultValue: "32,33"
                         },
                         ONOFF: {
-                            type: ArgumentType.NUMBER,
+                            type: ArgumentType.STRING,
                             menu: 'onOff',
-                            defaultValue: 1
+                            defaultValue: "1"
                         }
                     }
                 },
@@ -1241,6 +1142,83 @@ class KakaBlocks {
                             defaultValue: 50
                         }
                     }
+                },
+                // setDigitalOutput
+                {
+                    opcode: 'setDigitalOutput',
+                    text: formatMessage({
+                        id: 'kaka.setDigitalOutput',
+                        default: 'Digital Output [PIN] set to [LEVEL]',
+                        description: 'Set a digital output pin to specific level'
+                    }),
+                    blockType: BlockType.COMMAND,
+                    arguments: {
+                        PIN: {
+                            type: ArgumentType.STRING,
+                            menu: 'digitalOutputPins',
+                            defaultValue: "2"
+                        },
+                        LEVEL: {
+                            type: ArgumentType.STRING,
+                            menu: 'digitalOutputLevels',
+                            defaultValue: "1"
+                        }
+                    },
+                },
+                // getDigitalInput
+                {
+                    opcode: 'getDigitalInput',
+                    text: formatMessage({
+                        id: 'kaka.getDigitalInput',
+                        default: 'Digital Input [PIN]',
+                        description: 'Get level of a digital input pin'
+                    }),
+                    blockType: BlockType.REPORTER,
+                    arguments: {
+                        PIN: {
+                            type: ArgumentType.STRING,
+                            menu: 'digitalInputPins',
+                            defaultValue: "0"
+                        },
+                    },
+                },
+                // setPwmOutput
+                {
+                    opcode: 'setPwmOutput',
+                    text: formatMessage({
+                        id: 'kaka.setPwmOutput',
+                        default: 'PWM Output [PIN] set to [VALUE]',
+                        description: 'Set a PWM output pin to specific value(0-255)'
+                    }),
+                    blockType: BlockType.COMMAND,
+                    arguments: {
+                        PIN: {
+                            type: ArgumentType.STRING,
+                            menu: 'pwmOutputPins',
+                            defaultValue: "2"
+                        },
+                        VALUE: {
+                            type: ArgumentType.NUMBER,
+                            defaultValue: 0
+                        }
+                    },
+                },
+                // getAnalogInput
+                {
+                    opcode: 'getAnalogInput',
+                    text: formatMessage({
+                        id: 'kaka.getAnalogInput',
+                        default: 'Analog Input [PIN]',
+                        description: 'Get value of a analog input pin'
+                    }),
+                    blockType: BlockType.REPORTER,
+                    arguments: {
+                        PIN: {
+                            type: ArgumentType.STRING,
+                            menu: 'analogInputPins',
+                            defaultValue: "13"
+                        },
+                    },
                 },
             ],
             menus: {
@@ -1401,14 +1379,14 @@ class KakaBlocks {
                                 id: 'kaka.onOff.on',
                                 default: 'ON',
                                 description: 'Logic on off, on'
-                            }), value: 1
+                            }), value: "1"
                         },
                         {
                             text: formatMessage({
                                 id: 'kaka.onOff.off',
                                 default: 'OFF',
                                 description: 'Logic on off, off'
-                            }), value: 0
+                            }), value: "0"
                         },
                     ]
                 },
@@ -1491,14 +1469,8 @@ class KakaBlocks {
 
     whenButton(args) {
         let pin = Cast.toNumber(args.BUTTON);
-        let state = Cast.toNumber(args.STATE);
         this._peripheral.getDigitalInput(pin);
-        return this._peripheral.digitalInputValues[pin] === state;
-    }
-
-    getButtonState(args) {
-        let pin = Cast.toNumber(args.BUTTON);
-        return this._peripheral.getDigitalInput(pin);
+        return this._peripheral.digitalInputValues[pin] === 0;
     }
 
     ifButtonPressed(args) {
