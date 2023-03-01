@@ -118,6 +118,10 @@ class WebBle {
      * @param {object} error - the error object.
      */
     _onScanError = (error) => {
+        console.warn(error);
+        if (error.code === 8) {
+            return;
+        }
         this._runtime.emit(this._runtime.constructor.PERIPHERAL_REQUEST_ERROR, {
             message: error,
             extensionId: this._extensionId
