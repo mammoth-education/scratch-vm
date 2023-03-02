@@ -987,11 +987,6 @@ class KakaBlocks {
                             menu: 'buttons',
                             defaultValue: "0"
                         },
-                        STATE: {
-                            type: ArgumentType.STRING,
-                            menu: 'buttonEvents',
-                            defaultValue: "0"
-                        }
                     },
                 },
                 // buzzerPlayNoteFor
@@ -1475,10 +1470,8 @@ class KakaBlocks {
 
     ifButtonPressed(args) {
         let pin = Cast.toNumber(args.BUTTON);
-        let state = Cast.toNumber(args.STATE);
         this._peripheral.getDigitalInput(pin);
-        console.log(this._peripheral.digitalInputValues[pin], state);
-        return this._peripheral.digitalInputValues[pin] === state;
+        return this._peripheral.digitalInputValues[pin] === 0;
     }
 
     buzzerPlayNoteFor(args) {
