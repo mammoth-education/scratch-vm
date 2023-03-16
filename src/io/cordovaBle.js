@@ -34,7 +34,9 @@ class CordovaBle {
             services = services.concat(filters[i].services);
         }
         services = services.concat(peripheralOptions.optionalServices);
-
+        // 打开蓝牙弹窗，让用户进行授权
+        ble.enable(() => {console.log("Bluetooth is enabled")},() => {"The user did *not* enable Bluetooth"});
+        
         ble.scan(services, 5, this._onDiscoverDevice, this._onScanError);
     }
 
