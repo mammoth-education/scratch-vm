@@ -281,8 +281,8 @@ class WebBle {
     startNotifications = (serviceId, characteristicId, onCharacteristicChanged = null) => {
         return new Promise((resolve, reject) => {
             // 现在notify不支持，所以写一个定时器，每隔一段时间读取一次，来模拟notify
-            // 模拟notify
             if (VIRTUAL_NOTIFY) {
+                // 模拟notify
                 if (!this._onCharacteristicChangedCallbacks[serviceId]) {
                     this._onCharacteristicChangedCallbacks[serviceId] = {};
                 }

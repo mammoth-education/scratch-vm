@@ -259,6 +259,16 @@ class Kaka {
         this.reset = this.reset.bind(this);
         this.stopAll = this.stopAll.bind(this);
         this._onConnect = this._onConnect.bind(this);
+        this.buttonIDs = {
+            "A": 41,
+            "B": 42,
+        }
+        for (button in this.buttonIDs) {
+            let id = this.buttonIDs[button];
+            this._devices[id] = {
+                value: 1,
+            }
+        }
     }
 
     /**
@@ -440,12 +450,7 @@ class Kaka {
      */
     send(uuid, message, useLimiter = true) {
         if (!this.isConnected()) return Promise.resolve();
-
-        if (useLimiter) {
-            if (!this._rateLimiter.okayToSend()) {
-                return Promise.resolve();
-            }
-        }
+        if (useLimiter && !this._rateLimiter.okayToSend()) return Promise.resolve();
 
         return this._ble.write(
             BLEService.IO_SERVICE,
@@ -510,6 +515,7 @@ class Kaka {
     _onInput(data) {
         let valueLength = data[0];
         let dataIndex = 0;
+        console.log(data);
         for (let i = 0; i < valueLength; i++) {
             let id = data[++dataIndex];
             let length = data[++dataIndex];
@@ -520,9 +526,10 @@ class Kaka {
             for (let j = 0; j < valueList.length; j++) {
                 value += valueList[j] << (j * 8);
             }
-            if (this._devices[id]){
-                this._devices[id].value = value;
+            if (!this._devices[id]){
+                this._devices[id] = {};
             }
+            this._devices[id].value = value;
         }
     }
 
@@ -636,11 +643,13 @@ class Kaka {
      */
     _inputDevice(type, action, pins, useLimiter = true) {
         if (!this.isConnected()) return Promise.resolve();
+        if (useLimiter && !this._rateLimiter.okayToSend()) return Promise.resolve();
+
         let result = this._registerDevice(type, pins, action);
         let id = result.id;
         if (result.newDevice) {
             const command = this.generateInputCommand(type, id, action, pins);
-            this.send(BLECharacteristic.INPUT_COMMAND, command)
+            this.send(BLECharacteristic.INPUT_COMMAND, command, useLimiter)
         }
         return Promise.resolve(this._devices[id].value);
     }
@@ -700,16 +709,16 @@ class Kaka {
     }
 
     /**
-     * Get button event.
-     * @param {number} pin - the pin to read from.
+     * Get Button Input.
+     * @param {string} button - the button to read from.
+     * @return {number} - the value read.
      */
-    getButtonEvent(pin) {
-        return new Promise((resolve, reject) => {
-            this.getDigitalInput(pin).then(value => {
-                this.buttonEvent[pin] = value;
-                resolve(value);
-            });
-        });
+    getButtonInput(button) {
+        let id = this.buttonIDs[button];
+        if (this._devices[id]) {
+            return this._devices[id].value == 0;
+        }
+        return false;
     }
 
     /**
@@ -968,7 +977,7 @@ class KakaBlocks {
                         BUTTON: {
                             type: ArgumentType.STRING,
                             menu: 'buttons',
-                            defaultValue: "0"
+                            defaultValue: "A"
                         },
                     },
                 },
@@ -985,7 +994,7 @@ class KakaBlocks {
                         BUTTON: {
                             type: ArgumentType.STRING,
                             menu: 'buttons',
-                            defaultValue: "0"
+                            defaultValue: "A"
                         },
                     },
                 },
@@ -1308,7 +1317,7 @@ class KakaBlocks {
                                 default: 'A',
                                 description: 'Button A'
                             }),
-                            value: "0"
+                            value: "A"
                         },
                         {
                             text: formatMessage({
@@ -1316,7 +1325,7 @@ class KakaBlocks {
                                 default: 'B',
                                 description: 'Button B'
                             }),
-                            value: "5"
+                            value: "B"
                         },
                     ]
                 },
@@ -1463,15 +1472,13 @@ class KakaBlocks {
     }
 
     whenButton(args) {
-        let pin = Cast.toNumber(args.BUTTON);
-        this._peripheral.getDigitalInput(pin);
-        return this._peripheral.digitalInputValues[pin] === 0;
+        let button = args.BUTTON;
+        return this._peripheral.getButtonInput(button);
     }
 
     ifButtonPressed(args) {
-        let pin = Cast.toNumber(args.BUTTON);
-        this._peripheral.getDigitalInput(pin);
-        return this._peripheral.digitalInputValues[pin] === 0;
+        let button = args.BUTTON;
+        return this._peripheral.getButtonInput(button);
     }
 
     buzzerPlayNoteFor(args) {
