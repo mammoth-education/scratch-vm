@@ -553,7 +553,6 @@ class Kaka {
     _onInput(data) {
         let valueLength = data[0];
         let dataIndex = 0;
-        console.log(data);
         for (let i = 0; i < valueLength; i++) {
             let id = data[++dataIndex];
             let length = data[++dataIndex];
