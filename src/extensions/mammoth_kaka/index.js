@@ -367,7 +367,7 @@ class Kaka {
             let device = this._devices[deviceId];
             switch (device.type) {
                 case KakaDevice.Motor:
-                    this.motorStop(device);
+                    this.stopMotor(device);
                     break;
                 case KakaDevice.Buzzer:
                     this.stopBuzzer();
