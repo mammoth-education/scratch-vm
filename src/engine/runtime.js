@@ -1547,8 +1547,7 @@ class Runtime extends EventEmitter {
      */
     getPeripheralFirmwareVersion (extensionId) {
         if (this.peripheralExtensions[extensionId]) {
-            let version = this.peripheralExtensions[extensionId].getPeripheralFirmwareVersion();
-            return version;
+            return this.peripheralExtensions[extensionId].getFirmwareVersion();
         }
     }
 
@@ -1557,8 +1556,7 @@ class Runtime extends EventEmitter {
      */
     getLatestFirmwareVersion (extensionId) {
         if (this.peripheralExtensions[extensionId]) {
-            let version = this.peripheralExtensions[extensionId].getLatestFirmwareVersion();
-            return version;
+            return this.peripheralExtensions[extensionId].getLatestFirmwareVersion();
         }
     }
 

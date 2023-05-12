@@ -96,6 +96,7 @@ const BLECharacteristic = {
  */
 const DeviceAction = {
     CHANGE_NAME: 0x01,
+    RESET_IO: 0x02,
 };
 
 /**
@@ -213,6 +214,11 @@ class Kaka {
         this._runtime.on('PROJECT_STOP_ALL', this.stopAll.bind(this));
 
         /**
+         * 固件版本号
+         */
+        this.version = null;
+
+        /**
          * 扩展的ID
          */
         this._extensionId = extensionId;
@@ -283,6 +289,30 @@ class Kaka {
                 resolve(version);
             });
         })
+    }
+
+    /**
+     * 获取设备的版本号
+     * @return {Promise} 返回一个Promise，resolve的值为设备的版本号
+     */
+    getFirmwareVersion () {
+        return new Promise((resolve,reject)  => {
+            let count = 0;
+            if (this.version) {
+                resolve(this.version);
+            }
+            let interval = setInterval(() => {
+                count += 1;
+                if (this.version) {
+                    clearInterval(interval);
+                    resolve(this.version);
+                }
+                if (count > 10) {
+                    clearInterval(interval);
+                    reject('timeout');
+                }
+            }, 1000);
+        });
     }
 
     /**
@@ -427,6 +457,11 @@ class Kaka {
         this._devices = {};
         this._inputDeviceId = 0;
         clearInterval(this._intervalId);
+        return this._ble.write(
+            BLEService.DEVICE_SERVICE,
+            BLECharacteristic.ATTACHED_IO,
+            [DeviceAction.RESET_IO]
+        );
     }
 
     /**
@@ -505,6 +540,9 @@ class Kaka {
      * 在连接成功后，开始监听输入数据
      */
     _onConnect() {
+        this.getPeripheralFirmwareVersion().then(version => {
+            this.version = version;
+        })
         this._ble.startNotifications(BLEService.IO_SERVICE, BLECharacteristic.INPUT_VALUES, this._onInput.bind(this));
     }
 
