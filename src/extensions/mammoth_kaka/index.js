@@ -679,10 +679,10 @@ class Kaka {
      */
     _inputDevice(type, action, pins, useLimiter = true) {
         if (!this.isConnected()) return Promise.resolve();
-        if (useLimiter && !this._rateLimiter.okayToSend()) return Promise.resolve();
-
         let result = this._registerDevice(type, pins, action);
         let id = result.id;
+        if (useLimiter && !this._rateLimiter.okayToSend()) return Promise.resolve(this._devices[id].value);
+
         if (result.newDevice) {
             const command = this.generateInputCommand(type, id, action, pins);
             this.send(BLECharacteristic.INPUT_COMMAND, command, useLimiter)
