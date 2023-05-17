@@ -14,7 +14,7 @@ if (window.cordova && (window.cordova.platformId === 'android' || window.cordova
     BLE = require('../../io/ble');
 }
 
-const LATEST_FIRMWARE_VERSION = "0.0.6";
+const LATEST_FIRMWARE_VERSION = "0.0.7";
 const FIRMWARE = {
     '0x1000': 'kaka-firmware/kaka-mammoth-coding-firmware.ino.bootloader.bin',
     '0x8000': 'kaka-firmware/kaka-mammoth-coding-firmware.ino.partitions.bin',
@@ -392,6 +392,7 @@ class Kaka {
      * 关闭所有设备
      */
     stopAll() {
+        this.reset();
         if (!this.isConnected()) return;
         for (const deviceId in this._devices) {
             let device = this._devices[deviceId];
@@ -410,7 +411,6 @@ class Kaka {
                     break;
             }
         }
-        this.reset();
     }
 
     /**
@@ -445,7 +445,7 @@ class Kaka {
         if (this._ble) {
             this._ble.disconnect();
         }
-
+        this.version = null;
         this.reset();
     }
 
@@ -456,7 +456,6 @@ class Kaka {
         this._deviceId = 0;
         this._devices = {};
         this._inputDeviceId = 0;
-        clearInterval(this._intervalId);
         return this._ble.write(
             BLEService.DEVICE_SERVICE,
             BLECharacteristic.ATTACHED_IO,
