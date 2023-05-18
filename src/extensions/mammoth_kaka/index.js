@@ -577,21 +577,6 @@ class Kaka {
     }
 
     /**
-     * 读取数字输入设备的值
-     */
-    get digitalInputValues() {
-        values = {};
-        for (let id in this._devices) {
-            let device = this._devices[id];
-            if (device.type === KakaInputDevice.DigitalInput) {
-                pin = device.pins.join(",");
-                values[pin] = device.value;
-            }
-        }
-        return values;
-    }
-
-    /**
      * Register a device to the Kaka peripheral.
      * @param {number} type         - 设备的类型
      * @param {array}  pins         - 设备的引脚
