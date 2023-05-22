@@ -456,11 +456,13 @@ class Kaka {
         this._deviceId = 0;
         this._devices = {};
         this._inputDeviceId = 0;
-        return this._ble.write(
-            BLEService.DEVICE_SERVICE,
-            BLECharacteristic.ATTACHED_IO,
-            [DeviceAction.RESET_IO]
-        );
+        if (this._ble) {
+            return this._ble.write(
+                BLEService.DEVICE_SERVICE,
+                BLECharacteristic.ATTACHED_IO,
+                [DeviceAction.RESET_IO]
+            );
+        }
     }
 
     /**
