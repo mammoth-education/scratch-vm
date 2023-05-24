@@ -14,7 +14,7 @@ if (window.cordova && (window.cordova.platformId === 'android' || window.cordova
     BLE = require('../../io/ble');
 }
 
-const LATEST_FIRMWARE_VERSION = "0.0.7";
+const LATEST_FIRMWARE_VERSION = "1.0.0";
 const FIRMWARE = {
     '0x1000': 'kaka-firmware/kaka-mammoth-coding-firmware.ino.bootloader.bin',
     '0x8000': 'kaka-firmware/kaka-mammoth-coding-firmware.ino.partitions.bin',
