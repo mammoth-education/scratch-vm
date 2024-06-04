@@ -3,6 +3,10 @@ class StageLayering {
         return 'background';
     }
 
+    static get MJPG_STREAMER_LAYER () {
+        return 'mjpg_streamer';
+    }
+
     static get VIDEO_LAYER () {
         return 'video';
     }
@@ -19,6 +23,7 @@ class StageLayering {
     static get LAYER_GROUPS () {
         return [
             StageLayering.BACKGROUND_LAYER,
+            StageLayering.MJPG_STREAMER_LAYER,
             StageLayering.VIDEO_LAYER,
             StageLayering.PEN_LAYER,
             StageLayering.SPRITE_LAYER
