@@ -453,11 +453,7 @@ class webSocket {
     return this._info;
   }
 
-  onReceive = (buffer) => {
-
-  }
-
-  // 获取WiFiIP
+  // Get WiFi IP
   getDeviceWifiIp = () => {
     console.log("this._devicesWifiData", this._devicesWifiData)
     return this._devicesWifiData;
