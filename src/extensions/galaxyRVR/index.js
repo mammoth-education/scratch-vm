@@ -500,7 +500,7 @@ class GalaxyRVRBlocks {
      */
     getInfo() {
         if (this.firstInstall) {
-            this.globalVideoState = true;
+            this.globalVideoState = 'on';
             this.globalVideoTransparency = 0;
             this.updateVideoDisplay();
             this.firstInstall = false;
@@ -1269,6 +1269,7 @@ class GalaxyRVRBlocks {
 
     whenPinBlocked(args) {
         let irObstacle = this._peripheral.irObstacle;
+        if (!irObstacle) return false;
         if (args.AVOIDANCE === "left") {
             return irObstacle.left === 0 ? true : false;
         } else {
