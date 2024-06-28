@@ -10,6 +10,7 @@ class webSocket {
     this._payload = payload; //需要发送的数据
     this._onReceive = onReceive; //将接收到的数据进行转换
     this._receivedData = null; //接收到的数据
+    this._networks = []; //附近WiFi名称
     this.autoConnect();
     // this._onSend();
     this._clickConnect = false;
@@ -176,6 +177,9 @@ class webSocket {
           }
           console.log("设备连接wifi成功！", this._devicesWifiData);
         }
+        if (message.state && message.networks) {
+          this._networks = message.networks;
+        }
       } else {
         // console.log('收到其他：', message);
         this._receivedData = this._onReceive(message);
@@ -186,6 +190,7 @@ class webSocket {
     // 当连接关闭时触发
     socket.onclose = (event) => {
       this._isConnected = false;
+      this._networks = [];
       // if (event.code === 1000) {
       console.log('WebSocket 连接已关闭!!!!!!');
       // 修改block连接UI
@@ -451,6 +456,10 @@ class webSocket {
    */
   getDeviceInfo = () => {
     return this._info;
+  }
+
+  getWebSocketData = () => {
+    return this;
   }
 
   // Get WiFi IP
