@@ -400,6 +400,16 @@ class GalaxyRVR {
             return this._ws.getDeviceInfo();
         }
     }
+
+    /**
+     * 获取webSocket 所有数据
+     * @return {object} 设备的连接状态
+     */
+    getWebSocketData() {
+        if (this._ws) {
+            return this._ws.getWebSocketData();
+        }
+    }
     /**
      * 获取设备的连接状态
      * @return {boolean} 设备的连接状态
@@ -735,6 +745,8 @@ class GalaxyRVRBlocks {
                         },
                     },
                 },
+
+
                 // Wait until pin IR detects an obstacle
                 {
                     opcode: 'waitingAvoidance',
@@ -757,15 +769,16 @@ class GalaxyRVRBlocks {
                         },
                     },
                 },
-                // IR state
+
+
                 {
-                    opcode: 'iRState',
+                    opcode: 'isBlocked',
                     text: formatMessage({
-                        id: 'galaxyRVR.obstacleAvoidance.IR',
-                        default: '[AVOIDANCE] IR status',
-                        description: 'is blocked'
+                        id: 'galaxyRVR.obstacleAvoidance.isBlocked',
+                        default: '[AVOIDANCE] IR blocked ?',
+                        description: 'If the left or right side is obscured'
                     }),
-                    blockType: BlockType.REPORTER,
+                    blockType: BlockType.BOOLEAN,
                     arguments: {
                         AVOIDANCE: {
                             type: ArgumentType.STRING,
@@ -774,6 +787,45 @@ class GalaxyRVRBlocks {
                         },
                     },
                 },
+                // IR state
+                // {
+                //     opcode: 'iRState',
+                //     text: formatMessage({
+                //         id: 'galaxyRVR.obstacleAvoidance.IR',
+                //         default: '[AVOIDANCE] IR status',
+                //         description: 'is blocked'
+                //     }),
+                //     blockType: BlockType.REPORTER,
+                //     arguments: {
+                //         AVOIDANCE: {
+                //             type: ArgumentType.STRING,
+                //             menu: 'infraredObstacleAvoidance',
+                //             defaultValue: 'left'
+                //         },
+                //     },
+                // },
+
+                // IR left state
+                {
+                    opcode: 'iRLeftState',
+                    text: formatMessage({
+                        id: 'galaxyRVR.obstacleAvoidance.IRLeft',
+                        default: 'left IR status',
+                        description: 'left IR status'
+                    }),
+                    blockType: BlockType.REPORTER,
+                },
+                // IR right state
+                {
+                    opcode: 'iRRightState',
+                    text: formatMessage({
+                        id: 'galaxyRVR.obstacleAvoidance.IRRight',
+                        default: 'right IR status',
+                        description: 'right IR status'
+                    }),
+                    blockType: BlockType.REPORTER,
+                },
+
                 // Setting the servo angle
                 {
                     opcode: 'settingServoAngle',
@@ -1230,7 +1282,8 @@ class GalaxyRVRBlocks {
     }
 
     whenDistance(args) {
-        let distance = this._peripheral.distance;
+        let distance = this._peripheral.distance / 10;
+        distance = Math.round(distance * 10) / 10;
         const level = Cast.toNumber(args.LEVEL);
         if (args.OP === ">") {
             return distance > level;
@@ -1242,7 +1295,8 @@ class GalaxyRVRBlocks {
     waitUtilDistance(args) {
         return new Promise((resolve, reject) => {
             setInterval(() => {
-                let distance = this._peripheral.distance;
+                let distance = this._peripheral.distance / 10;
+                distance = Math.round(distance * 10) / 10;
                 const level = Cast.toNumber(args.LEVEL);
                 if (args.OP === ">") {
                     if (distance > level) resolve();
@@ -1254,7 +1308,8 @@ class GalaxyRVRBlocks {
     }
 
     isDistance(args) {
-        let distance = this._peripheral.distance;
+        let distance = this._peripheral.distance / 10;
+        distance = Math.round(distance * 10) / 10;
         const level = Cast.toNumber(args.LEVEL);
         if (args.OP === ">") {
             return distance > level;
@@ -1264,7 +1319,9 @@ class GalaxyRVRBlocks {
     }
 
     distance() {
-        return this._peripheral.distance
+        let distance = this._peripheral.distance / 10;
+        distance = Math.round(distance * 10) / 10;
+        return distance;
     }
 
     whenPinBlocked(args) {
@@ -1298,6 +1355,12 @@ class GalaxyRVRBlocks {
         });
     }
 
+    isBlocked(args) {
+        let irObstacle = this._peripheral.irObstacle;
+        if (!irObstacle) return false;
+        return args.AVOIDANCE === "left" ? irObstacle.left === 0 : irObstacle.right === 0;
+    }
+
     iRState(args) {
         let irObstacle = this._peripheral.irObstacle;
         if (args.AVOIDANCE === "left") {
@@ -1305,6 +1368,14 @@ class GalaxyRVRBlocks {
         } else {
             return irObstacle.right === 0 ? true : false;
         }
+    }
+    iRLeftState() {
+        const irObstacle = this._peripheral.irObstacle;
+        return irObstacle ? irObstacle.left === 0 : false;
+    }
+    iRRightState() {
+        let irObstacle = this._peripheral.irObstacle;
+        return irObstacle ? irObstacle.right === 0 : false;
     }
 
     settingServoAngle(args) {
