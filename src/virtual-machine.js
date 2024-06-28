@@ -322,6 +322,15 @@ class VirtualMachine extends EventEmitter {
     }
 
     /**
+     * Get webSocketData
+     * @param {string} extensionId - the id of the extension.
+     * @return {object} - webSocket all data.
+     */
+    getWebSocketData(extensionId) {
+        return this.runtime.getWebSocketData(extensionId);
+    }
+
+    /**
      * Get device info
      * @param {string} extensionId - the id of the extension.
      * @return {string} - the name of the connected peripheral.

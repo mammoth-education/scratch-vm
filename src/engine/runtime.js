@@ -1582,6 +1582,18 @@ class Runtime extends EventEmitter {
         }
         return deviceName;
     }
+    /**
+     * Get webSocketData
+     * @param {string} extensionId - the id of the extension.
+     * @return {object} - webSocket all data.
+     */
+    getWebSocketData(extensionId) {
+        let WebSocketData;
+        if (this.peripheralExtensions[extensionId]) {
+            WebSocketData = this.peripheralExtensions[extensionId].getWebSocketData();
+        }
+        return WebSocketData;
+    }
 
     /**
      * Get device info
