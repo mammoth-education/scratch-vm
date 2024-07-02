@@ -1294,7 +1294,6 @@ class GalaxyRVRBlocks {
 
     stopMoving() {
         console.log("stopMoving");
-        console.log(this._peripheral.receiveBuffer)
         this._peripheral.stopMotor();
         return Promise.resolve();
     }
@@ -1403,7 +1402,6 @@ class GalaxyRVRBlocks {
     }
 
     servoAngle() {
-        console.log("servo angle");
         let servoAngle = this._peripheral.servoAngle;
         return servoAngle + "°";
     }
@@ -1446,7 +1444,6 @@ class GalaxyRVRBlocks {
     }
 
     displayColor(args) {
-        console.log(args)
         let r = Cast.toNumber(args.COLOR1);
         let g = Cast.toNumber(args.COLOR2);
         let b = Cast.toNumber(args.COLOR3);
@@ -1457,19 +1454,16 @@ class GalaxyRVRBlocks {
     }
 
     increaseLightBrightness(args) {
-        console.log(args)
         let value = Cast.toNumber(args.VALUE);
         this._peripheral.increaseBrightness(value);
     }
 
     settingBrightness(args) {
-        console.log(args);
         let value = Cast.toNumber(args.VALUE);
         this._peripheral.setBrightness(value);
     }
 
     turnLight(args) {
-        console.log(args)
         const light = Cast.toNumber(args.ONOFF);
         if (light === 0) {
             this._peripheral.turnOffLightStrip();
@@ -1479,7 +1473,6 @@ class GalaxyRVRBlocks {
     }
 
     videoToggle(args) {
-        console.log(args);
         const video = Cast.toNumber(args.ONOFF);
         if (video === 0) {
             this.runtime.ioDevices.mjpg.stop();
@@ -1503,13 +1496,11 @@ class GalaxyRVRBlocks {
     }
 
     turnLightsESP32(args) {
-        console.log(args)
         let data = data = Cast.toNumber(args.ONOFF) !== 0;
         this._peripheral.setCameraLightSwitch(data);
     }
 
     battery() {
-        console.log("battery");
         let batteryVoltage = this._peripheral.batteryVoltage;
         return batteryVoltage ? batteryVoltage + "V" : "";
     }
