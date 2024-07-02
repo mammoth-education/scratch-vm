@@ -258,6 +258,11 @@ class GalaxyRVR {
     addServoAngle(data) {
         if (this.sendBuffer.servoAngle) {
             this.sendBuffer.servoAngle += data;
+            if (this.sendBuffer.servoAngle > 140) {
+                this.sendBuffer.servoAngle = 140;
+            }
+        } else {
+            this.sendBuffer.servoAngle = 90 + data;
         }
         this.sendDataWS();
     }
@@ -445,6 +450,9 @@ class GalaxyRVR {
     }
     get batteryVoltage() {
         return this.receiveBuffer.BatteryVoltage;
+    }
+    get servoAngle() {
+        return this.sendBuffer.servoAngle ? this.sendBuffer.servoAngle : 90;
     }
 }
 
@@ -841,6 +849,16 @@ class GalaxyRVRBlocks {
                             defaultValue: 90
                         },
                     },
+                },
+                //servo angle
+                {
+                    opcode: 'servoAngle',
+                    text: formatMessage({
+                        id: 'galaxyRVR.rudder.servoAngle',
+                        default: 'servo angle',
+                        description: 'servo angle'
+                    }),
+                    blockType: BlockType.REPORTER,
                 },
                 // Increase servo angle
                 {
@@ -1382,6 +1400,12 @@ class GalaxyRVRBlocks {
         let angle = Math.round(Cast.toNumber(args.VALUE));
         this._peripheral.setServoAngle(angle);
         return Promise.resolve();
+    }
+
+    servoAngle() {
+        console.log("servo angle");
+        let servoAngle = this._peripheral.servoAngle;
+        return servoAngle + "°";
     }
 
     increaseServoAngle(args) {
