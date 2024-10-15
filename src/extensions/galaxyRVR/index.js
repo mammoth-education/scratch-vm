@@ -1239,12 +1239,14 @@ class GalaxyRVRBlocks {
         return Promise.resolve();
     }
 
+    // 前进
     move(args) {
         let direction = args.DIRECTION;
         this._peripheral.move(direction);
         return Promise.resolve();
     }
 
+    // 前进秒钟
     moveFor(args) {
         let direction = args.DIRECTION;
         let time = Math.round(Cast.toNumber(args.DURATION));
@@ -1257,6 +1259,7 @@ class GalaxyRVRBlocks {
         })
     }
 
+    // 以速度移动方向
     moveAtFor(args) {
         let speed = Math.round(Cast.toNumber(args.VALUE));
         let time = Math.round(Cast.toNumber(args.DURATION));
@@ -1270,6 +1273,7 @@ class GalaxyRVRBlocks {
         })
     }
 
+    // 以速度移动方向秒钟
     moveAt(args) {
         let speed = Math.round(Cast.toNumber(args.VALUE));
         let direction = args.DIRECTION;
@@ -1277,6 +1281,7 @@ class GalaxyRVRBlocks {
         return Promise.resolve();
     }
 
+    // 左右轮移动秒钟
     controlMotors(args) {
         let data = {
             leftSpeed: Math.round(Cast.toNumber(args.NOTE)),
@@ -1298,6 +1303,7 @@ class GalaxyRVRBlocks {
         return Promise.resolve();
     }
 
+    // 当距离判断
     whenDistance(args) {
         let distance = this._peripheral.distance / 10;
         distance = Math.round(distance * 10) / 10;
@@ -1309,6 +1315,7 @@ class GalaxyRVRBlocks {
         }
     }
 
+    // 等待距离判断
     waitUtilDistance(args) {
         return new Promise((resolve, reject) => {
             setInterval(() => {
@@ -1324,6 +1331,7 @@ class GalaxyRVRBlocks {
         });
     }
 
+    // 距离判断
     isDistance(args) {
         let distance = this._peripheral.distance / 10;
         distance = Math.round(distance * 10) / 10;
@@ -1335,12 +1343,14 @@ class GalaxyRVRBlocks {
         }
     }
 
+    // 距离
     distance() {
         let distance = this._peripheral.distance / 10;
         distance = Math.round(distance * 10) / 10;
         return distance;
     }
 
+    // 当左右IR遮挡
     whenPinBlocked(args) {
         let irObstacle = this._peripheral.irObstacle;
         if (!irObstacle) return false;
@@ -1351,6 +1361,7 @@ class GalaxyRVRBlocks {
         }
     }
 
+    // 等待左右IR遮挡
     waitingAvoidance(args) {
         return new Promise((resolve, reject) => {
             setInterval(() => {
@@ -1372,12 +1383,6 @@ class GalaxyRVRBlocks {
         });
     }
 
-    isBlocked(args) {
-        let irObstacle = this._peripheral.irObstacle;
-        if (!irObstacle) return false;
-        return args.AVOIDANCE === "left" ? irObstacle.left === 0 : irObstacle.right === 0;
-    }
-
     iRState(args) {
         let irObstacle = this._peripheral.irObstacle;
         if (args.AVOIDANCE === "left") {
@@ -1386,26 +1391,57 @@ class GalaxyRVRBlocks {
             return irObstacle.right === 0 ? true : false;
         }
     }
+
+    // isBlocked(args) {
+    //     let irObstacle = this._peripheral.irObstacle;
+    //     if (!irObstacle) return false;
+    //     return args.AVOIDANCE === "left" ? irObstacle.left === 0 : irObstacle.right === 0;
+    // }
+    // 左侧/右侧IR状态
+    isBlocked(args) {
+        let irObstacle = this._peripheral.irObstacle;
+        if (!irObstacle) return "1";
+        if (args.AVOIDANCE === "left") {
+            return irObstacle.left === 0 ? "0" : "1";
+        } else {
+            return irObstacle.right === 0 ? "0" : "1";
+        }
+    }
+    // 左侧IR状态
     iRLeftState() {
         const irObstacle = this._peripheral.irObstacle;
-        return irObstacle ? irObstacle.left === 0 : false;
+        if (irObstacle) {
+            return irObstacle.left === 0 ? "0" : "1";
+        } else {
+            return "1";
+        }
+        // return irObstacle ? irObstacle.left === 0 : false;
     }
+    // 右侧IR状态
     iRRightState() {
         let irObstacle = this._peripheral.irObstacle;
-        return irObstacle ? irObstacle.right === 0 : false;
+        if (irObstacle) {
+            return irObstacle.right === 0 ? "0" : "1";
+        } else {
+            return "1";
+        }
+        // return irObstacle ? irObstacle.right === 0 : false;
     }
 
+    // 设置舵机角度
     settingServoAngle(args) {
         let angle = Math.round(Cast.toNumber(args.VALUE));
         this._peripheral.setServoAngle(angle);
         return Promise.resolve();
     }
 
+    // 获取舵机角度
     servoAngle() {
         let servoAngle = this._peripheral.servoAngle;
         return servoAngle + "°";
     }
 
+    // 增加舵机角度
     increaseServoAngle(args) {
         let angle = Math.round(Cast.toNumber(args.VALUE));
         this._peripheral.addServoAngle(angle);
@@ -1429,6 +1465,7 @@ class GalaxyRVRBlocks {
         })
     }
 
+    // 设置RGB
     displayColorSecs(args) {
         let r = Cast.toNumber(args.COLOR1);
         let g = Cast.toNumber(args.COLOR2);
@@ -1453,16 +1490,19 @@ class GalaxyRVRBlocks {
         this._peripheral.setColor(r, g, b);
     }
 
+    // 增加亮度
     increaseLightBrightness(args) {
         let value = Cast.toNumber(args.VALUE);
         this._peripheral.increaseBrightness(value);
     }
 
+    // 设置亮度
     settingBrightness(args) {
         let value = Cast.toNumber(args.VALUE);
         this._peripheral.setBrightness(value);
     }
 
+    // 灯条显示
     turnLight(args) {
         const light = Cast.toNumber(args.ONOFF);
         if (light === 0) {
@@ -1472,6 +1512,7 @@ class GalaxyRVRBlocks {
         }
     }
 
+    // 摄像头显示
     videoToggle(args) {
         const video = Cast.toNumber(args.ONOFF);
         if (video === 0) {
@@ -1484,11 +1525,13 @@ class GalaxyRVRBlocks {
         }
     }
 
+    // 画面正反转
     setRotation(args) {
         let rotation = args.ROTATION;
         this.runtime.ioDevices.mjpg.setRotation(rotation);
     }
 
+    // 视频透明度
     setVideoTransparency(args) {
         const transparency = Cast.toNumber(args.TRANSPARENCY);
         this.globalVideoTransparency = transparency;

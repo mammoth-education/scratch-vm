@@ -395,6 +395,9 @@ class webSocket {
           console.log('获取设备IP时出现错误:', error);
         });
     } else {
+      if (this.socket) {
+        this.socket.close();
+      }
       this.scan("192.168.4.1");
       // this.scan("192.168.137.1");
     }
