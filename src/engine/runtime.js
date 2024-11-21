@@ -1640,9 +1640,9 @@ class Runtime extends EventEmitter {
             this.peripheralExtensions[extensionId].settingWifi(extensionId, data);
         }
     }
-    calibration(extensionId) {
+    calibration(extensionId, state) {
         if (this.peripheralExtensions[extensionId]) {
-            this.peripheralExtensions[extensionId].calibration();
+            this.peripheralExtensions[extensionId].calibration(state);
         }
     }
 

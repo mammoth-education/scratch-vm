@@ -17,6 +17,9 @@ const Command = {
   CalibrateCompass: 0x06,  //校准罗盘
   LineTrackMode: 0x07,  //巡线模式
   ObstacleMode: 0x08,  //避障模式
+  CarMoveCarCentricTime: 0x09,  //车心带时间
+  CarMoveFieldCentricTime: 0x0A,  //场心带时间
+  StopAll: 0x0B,  //停止所有
 }
 
 const GrayscaleAngle = [-45, 0, 45, 90, "error"];
@@ -30,6 +33,7 @@ const Sensor = {
   CarHeading: 0x85,
   CompassAngle: 0x86,
   CalibrateData: 0x87,
+  CarMoveState: 0x88,
 }
 
 /**
@@ -122,11 +126,17 @@ class ZeusCar {
     // }
 
     // 校准指南针
+    // if (sendBuffer.hasOwnProperty("calibration")) {
+    //   if (sendBuffer.calibration) {
+    //     index += 1;
+    //     dataview.setUint8(index, Command.CalibrateCompass);
+    //   }
+    // }
     if (sendBuffer.hasOwnProperty("calibration")) {
-      if (sendBuffer.calibration) {
-        index += 1;
-        dataview.setUint8(index, Command.CalibrateCompass);
-      }
+      index += 1;
+      dataview.setUint8(index, Command.CalibrateCompass);
+      index += 1;
+      dataview.setUint8(index, sendBuffer.calibration);
     }
     // 前照灯
     if (sendBuffer.hasOwnProperty("headlights")) {
@@ -176,6 +186,41 @@ class ZeusCar {
       dataview.setUint8(index, sendBuffer.motorControl.rightRear);
       index += 1;
       dataview.setUint8(index, sendBuffer.motorControl.leftRear);
+    }
+    if (sendBuffer.hasOwnProperty("moveTime")) {
+      index += 1;
+      dataview.setUint8(index, Command.CarMoveCarCentricTime);
+      index += 1;
+      dataview.setInt16(index, sendBuffer.moveTime.moveAngle);
+      index += 1;
+      index += 1;
+      dataview.setInt8(index, sendBuffer.moveTime.speed);
+      index += 1;
+      dataview.setInt8(index, sendBuffer.moveTime.rotating);
+      index += 1;
+      dataview.setInt16(index, sendBuffer.moveTime.time);
+      index += 1;
+    }
+    if (sendBuffer.hasOwnProperty("carMoveFieldCentricTime")) {
+      index += 1;
+      dataview.setUint8(index, Command.CarMoveFieldCentricTime);
+      index += 1;
+      dataview.setInt16(index, sendBuffer.moveTime.moveAngle);
+      index += 1;
+      index += 1;
+      dataview.setInt8(index, sendBuffer.moveTime.speed);
+      index += 1;
+      dataview.setInt16(index, sendBuffer.moveTime.rotateAngle);
+      index += 1;
+      index += 1;
+      dataview.setInt16(index, sendBuffer.moveTime.time);
+      index += 1;
+    }
+    if (sendBuffer.hasOwnProperty("stopAll")) {
+      if (sendBuffer.stopAll) {
+        index += 1;
+        dataview.setUint8(index, Command.StopAll);
+      }
     }
 
 
@@ -266,6 +311,11 @@ class ZeusCar {
           let calibrateData = dataview.getUint8(i);
           receiveBuffer["compassCalibration"] = calibrateData;
           break;
+        case Sensor.CarMoveState:
+          i += 1;
+          let carMoveState = dataview.getUint8(i);
+          receiveBuffer["carMoveState"] = carMoveState;
+          break;
         default: break;
       }
     }
@@ -309,6 +359,7 @@ class ZeusCar {
   // }
 
   makeTurn(direction) {
+    this.sendBuffer = { stopAll: false };
     let move = {
       moveAngle: 0,
       speed: 0,
@@ -330,6 +381,7 @@ class ZeusCar {
     //   let move = { moveAngle: 0, speed: 0, rotateAngle: angle };
     //   this.sendBuffer = { move: move };
     // }
+    this.sendBuffer = { stopAll: false };
     let move = { moveAngle: 0, speed: 0, rotating: angle };
     this.sendBuffer = { move: move };
     this.sendDataWS();
@@ -344,12 +396,21 @@ class ZeusCar {
     //   let move = { moveAngle: angle + carAngle, speed: this.speed, rotateAngle: 0 };
     //   this.sendBuffer = { move: move };
     // }
+    this.sendBuffer = { stopAll: false };
     let move = { moveAngle: angle, speed: this.speed, rotating: 0 };
     this.sendBuffer = { move: move };
     this.sendDataWS();
   }
 
+  moveTime(angle, time) {
+    this.sendBuffer = { stopAll: false };
+    let moveTime = { moveAngle: angle, speed: this.speed, rotating: 0, time: time };
+    this.sendBuffer = { moveTime: moveTime };
+    this.sendDataWS();
+  }
+
   motorControl(motorSpeed) {
+    this.sendBuffer = { stopAll: false };
     this.sendBuffer = { motorControl: motorSpeed };
     this.sendDataWS();
   }
@@ -357,24 +418,18 @@ class ZeusCar {
   // 停止移动
   stopMotor() {
     clearInterval(this.setIntervalID);
-    // if (this.sendBuffer.move) {
-    //   this.sendBuffer.move.speed = 0;
-    // } else {
-    //   let move = { moveAngle: 0, speed: 0, rotateAngle: 0 };
-    //   this.sendBuffer = { move: move };
-    // }
+    this.sendBuffer = { stopAll: true };
+    this.sendBuffer = { calibration: 0 };
     let move = { moveAngle: 0, speed: 0, rotating: 0 };
     this.sendBuffer = { move: move };
     if (this.sendBuffer.motorControl) {
       this.sendBuffer = { motorControl: { leftFront: 0, rightFront: 0, rightRear: 0, leftRear: 0 } };
     }
     this.sendDataWS();
-    // delete this.sendBuffer.move; // 清空
-    // delete this.sendBuffer.motorControl; // 清空
   }
 
   setColor(r, g, b) {
-    let rgb = {}
+    let rgb = {};
     if (r === undefined && g === undefined && b === undefined) {
       rgb = { r: this.color.r, g: this.color.g, b: this.color.b };
     } else if (g === undefined || b === undefined) {
@@ -422,8 +477,9 @@ class ZeusCar {
     this.sendDataWS();
   }
   // 校准
-  calibration() {
-    this.sendBuffer = { calibration: true };
+  calibration(calibration) {
+    console.log("开始校准！", calibration)
+    this.sendBuffer = { calibration: calibration };
     this.sendDataWS();
     let setIntervalID = setInterval(() => {
       if (this.receiveBuffer.compassCalibration === 2 || this.receiveBuffer.compassCalibration === 0) {
@@ -445,6 +501,11 @@ class ZeusCar {
     //     this.sendDataWS();
     //   }
     // }, 1000)
+  }
+  // 停止校准
+  stopCalibration() {
+    this.sendBuffer = { calibration: 0 };
+    this.sendDataWS();
   }
 
   /**
@@ -523,15 +584,18 @@ class ZeusCar {
     if (this._ws) {
       let ip = this.getDeviceInfo();
       ip = `ws://${ip.ip}:30102`
-      this._ws.connectToDevice(ip);
-      let setIntervalID = setInterval(() => {
-        if (this.isConnected()) {
-          this.sendBuffer.setCarHeading = 0;
-          this.sendDataWS();
-          delete this.sendBuffer.setCarHeading;
-          clearInterval(setIntervalID);
-        }
-      })
+      // 不知道什么原因，无法连接，可能是扫秒还未完成导致，所以延迟2秒再连接
+      setTimeout(() => {
+        this._ws.connectToDevice(ip);
+        let setIntervalID = setInterval(() => {
+          if (this.isConnected()) {
+            this.sendBuffer.setCarHeading = 0;
+            this.sendDataWS();
+            delete this.sendBuffer.setCarHeading;
+            clearInterval(setIntervalID);
+          }
+        })
+      }, 2000);
     }
   }
 
@@ -596,6 +660,9 @@ class ZeusCar {
   get carHeading() {
     return this.receiveBuffer.carHeading;
   }
+  get carMoveState() {
+    return this.receiveBuffer.carMoveState;
+  }
 }
 
 /**
@@ -627,6 +694,8 @@ class ZeusCarBlocks {
 
     // 是否第一次加载
     this.firstInstall = true;
+    // 是否正在运行
+    // this.isRunning = false;
   }
 
   // 保存透明度
@@ -667,7 +736,7 @@ class ZeusCarBlocks {
     }
     return {
       id: ZeusCarBlocks.EXTENSION_ID,
-      name: 'zeusCar',
+      name: 'Zeus Car',
       blockIconURI: iconURI,
       showStatusButton: true,
       blocks: [
@@ -1592,14 +1661,47 @@ class ZeusCarBlocks {
   moveRotateFor(args) {
     let angle = Cast.toNumber(args.ANGLE);
     let time = Cast.toNumber(args.TIME);
-    this._peripheral.move(angle);
+    this._peripheral.moveTime(angle, time);
     return new Promise(resolve => {
       setTimeout(() => {
-        this._peripheral.stopMotor();
-        resolve();
+        let intervalId = setInterval(() => {
+          let carMoveState = this._peripheral.carMoveState;
+          if (carMoveState === 0) {
+            clearInterval(intervalId);
+            this._peripheral.stopMotor();
+            resolve();
+          }
+        });
       }, time * 1000);
     })
   }
+
+  // moveRotateFor(args) {
+  //   let angle = Cast.toNumber(args.ANGLE);
+  //   let time = Cast.toNumber(args.TIME);
+  //   // 返回一个Promise，只有在当前没有执行中的操作时才会启动
+  //   return new Promise(resolve => {
+  //     const tryExecute = () => {
+  //       if (!this.isRunning) {
+  //         this.isRunning = true; // 标记为正在执行
+  //         this._peripheral.move(angle);
+  //         setTimeout(() => {
+  //           this._peripheral.stopMotor();
+  //           this.isRunning = false; // 释放锁
+  //           resolve();
+  //         }, time * 1000);
+  //       } else {
+  //         // 如果正在运行，等待10毫秒后再尝试
+  //         setTimeout(tryExecute, 10);
+  //       }
+  //     };
+  //     // 尝试执行
+  //     tryExecute();
+  //   });
+  // }
+
+
+
   // 移动角度
   moveRotate(args) {
     console.log(args);
@@ -1626,8 +1728,14 @@ class ZeusCarBlocks {
     this._peripheral.motorControl(motorSpeed);
     return new Promise(resolve => {
       setTimeout(() => {
-        this._peripheral.stopMotor();
-        resolve();
+        let intervalId = setInterval(() => {
+          let carMoveState = this._peripheral.carMoveState;
+          if (carMoveState === 0) {
+            clearInterval(intervalId);
+            this._peripheral.stopMotor();
+            resolve();
+          }
+        });
       }, time * 1000);
     })
   }

@@ -362,8 +362,8 @@ class VirtualMachine extends EventEmitter {
         this.runtime.settingDeviceWiFi(extensionId, data);
     }
 
-    calibration(extensionId) {
-        this.runtime.calibration(extensionId);
+    calibration(extensionId,state) {
+        this.runtime.calibration(extensionId,state);
     }
 
     /**

@@ -525,7 +525,7 @@ class GalaxyRVRBlocks {
         }
         return {
             id: GalaxyRVRBlocks.EXTENSION_ID,
-            name: 'galaxyRVR',
+            name: 'GalaxyRVR',
             blockIconURI: iconURI,
             showStatusButton: true,
             blocks: [
