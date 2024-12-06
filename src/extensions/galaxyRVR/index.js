@@ -266,38 +266,109 @@ class GalaxyRVR {
         }
         this.sendDataWS();
     }
+    // setColor(r, g, b) {
+    //     let rgb = {}
+    //     if (r === undefined && g === undefined && b === undefined) {
+    //         rgb = { r: this.color.r, g: this.color.g, b: this.color.b };
+    //     } else if (g === undefined || b === undefined) {
+    //         rgb = Color.hexToRgb(r);
+    //     } else {
+    //         rgb = { r: r, g: g, b: b };
+    //     }
+    //     this.color = rgb;
+    //     rgb = {
+    //         r: rgb.r * this.brightness / 100,
+    //         g: rgb.g * this.brightness / 100,
+    //         b: rgb.b * this.brightness / 100,
+    //     }
+    //     this.sendBuffer.rgb = rgb;
+    //     this.sendDataWS();
+    // }
     setColor(r, g, b) {
-        let rgb = {}
+        // 1. 添加输入值验证
+        const validateRGB = (value) => {
+            return Number.isInteger(value) && value >= 0 && value <= 255;
+        };
+
+        let rgb = {};
         if (r === undefined && g === undefined && b === undefined) {
-            rgb = { r: this.color.r, g: this.color.g, b: this.color.b };
+            // 使用当前颜色
+            rgb = {
+                r: this.color.r || 0,
+                g: this.color.g || 0,
+                b: this.color.b || 0
+            };
         } else if (g === undefined || b === undefined) {
-            rgb = Color.hexToRgb(r);
+            // 处理十六进制颜色值
+            try {
+                rgb = Color.hexToRgb(r);
+                if (!rgb) throw new Error('Invalid hex color');
+            } catch (error) {
+                console.error('Invalid hex color value:', error);
+                return;
+            }
         } else {
-            rgb = { r: r, g: g, b: b };
+            // 验证RGB值
+            if (!validateRGB(r) || !validateRGB(g) || !validateRGB(b)) {
+                console.error('Invalid RGB values. Values must be integers between 0 and 255');
+                return;
+            }
+            rgb = { r, g, b };
         }
-        this.color = rgb;
-        rgb = {
-            r: rgb.r * this.brightness / 100,
-            g: rgb.g * this.brightness / 100,
-            b: rgb.b * this.brightness / 100,
-        }
-        this.sendBuffer.rgb = rgb;
+        this.color = { ...rgb };
+        const brightness = Math.max(0, Math.min(100, this.brightness)) / 100;
+        // const brightness = Math.pow(Math.max(0, Math.min(100, this.brightness)) / 100, 2);
+
+        this.sendBuffer.rgb = {
+            r: Math.round(rgb.r * brightness),
+            g: Math.round(rgb.g * brightness),
+            b: Math.round(rgb.b * brightness)
+        };
         this.sendDataWS();
     }
     // 增加亮度
+    // increaseBrightness(value) {
+    //     this.brightness += value;
+    //     let r = this.sendBuffer.rgb.r;
+    //     let g = this.sendBuffer.rgb.g;
+    //     let b = this.sendBuffer.rgb.b;
+    //     this.setColor(r, g, b);
+    // }
     increaseBrightness(value) {
-        this.brightness += value;
-        let r = this.sendBuffer.rgb.r;
-        let g = this.sendBuffer.rgb.g;
-        let b = this.sendBuffer.rgb.b;
-        this.setColor(r, g, b);
+        // 计算亮度增减的百分比
+        const change = (this.brightness * value) / 100;
+        const newBrightness = this.brightness + change;
+
+        // 限制亮度在 0 到 100 范围内
+        if (newBrightness > 100) {
+            this.brightness = 100;
+            console.warn("亮度已达到最大值");
+        } else if (newBrightness < 0) {
+            this.brightness = 0;
+            console.warn("亮度已达到最小值");
+        } else {
+            this.setBrightness(newBrightness);
+        }
     }
     // 设置亮度
+    // setBrightness(value) {
+    //     this.brightness = value;
+    //     let r = this.sendBuffer.rgb.r;
+    //     let g = this.sendBuffer.rgb.g;
+    //     let b = this.sendBuffer.rgb.b;
+    //     this.setColor(r, g, b);
+    // }
     setBrightness(value) {
+        if (!this.sendBuffer.rgb) {
+            this.sendBuffer.rgb = { r: 0, g: 0, b: 0 };
+        }
         this.brightness = value;
         let r = this.sendBuffer.rgb.r;
         let g = this.sendBuffer.rgb.g;
         let b = this.sendBuffer.rgb.b;
+        r = Math.min(255, Math.max(0, r * this.brightness)); // 防止超出范围
+        g = Math.min(255, Math.max(0, g * this.brightness));
+        b = Math.min(255, Math.max(0, b * this.brightness));
         this.setColor(r, g, b);
     }
     // 关闭灯条

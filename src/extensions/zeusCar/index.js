@@ -20,6 +20,7 @@ const Command = {
   CarMoveCarCentricTime: 0x09,  //车心带时间
   CarMoveFieldCentricTime: 0x0A,  //场心带时间
   StopAll: 0x0B,  //停止所有
+  Headlights: 0x0C,  //车灯
 }
 
 const GrayscaleAngle = [-45, 0, 45, 90, "error"];
@@ -89,7 +90,7 @@ class ZeusCar {
   dataConverter() {
     // 获取 sendBuffer 数据
     const sendBuffer = this.sendBuffer;
-    console.log("onSend读取到的数据：", sendBuffer);
+    // console.log("onSend读取到的数据：", sendBuffer);
     var buffer = new ArrayBuffer(200);
     let dataview = new DataView(buffer);
     let index = 0;
@@ -396,22 +397,31 @@ class ZeusCar {
     //   let move = { moveAngle: angle + carAngle, speed: this.speed, rotateAngle: 0 };
     //   this.sendBuffer = { move: move };
     // }
-    this.sendBuffer = { stopAll: false };
+
+    // this.sendBuffer = { stopAll: false };
+    // let move = { moveAngle: angle, speed: this.speed, rotating: 0 };
+    // this.sendBuffer = { move: move };
+    this.sendBuffer.stopAll = false;
     let move = { moveAngle: angle, speed: this.speed, rotating: 0 };
-    this.sendBuffer = { move: move };
+    this.sendBuffer.move = move;
     this.sendDataWS();
   }
 
   moveTime(angle, time) {
-    this.sendBuffer = { stopAll: false };
+    // this.sendBuffer = { stopAll: false };
+    // let moveTime = { moveAngle: angle, speed: this.speed, rotating: 0, time: time };
+    // this.sendBuffer = { moveTime: moveTime };
+    this.sendBuffer.stopAll = false;
     let moveTime = { moveAngle: angle, speed: this.speed, rotating: 0, time: time };
-    this.sendBuffer = { moveTime: moveTime };
+    this.sendBuffer.moveTime = moveTime;
     this.sendDataWS();
   }
 
   motorControl(motorSpeed) {
-    this.sendBuffer = { stopAll: false };
-    this.sendBuffer = { motorControl: motorSpeed };
+    // this.sendBuffer = { stopAll: false };
+    // this.sendBuffer = { motorControl: motorSpeed };
+    this.sendBuffer.stopAll = false;
+    this.sendBuffer.motorControl = motorSpeed;
     this.sendDataWS();
   }
 
@@ -421,45 +431,88 @@ class ZeusCar {
     this.sendBuffer = { stopAll: true };
     this.sendBuffer = { calibration: 0 };
     let move = { moveAngle: 0, speed: 0, rotating: 0 };
-    this.sendBuffer = { move: move };
+    // this.sendBuffer = { move: move };
+    this.sendBuffer.move = move;
     if (this.sendBuffer.motorControl) {
-      this.sendBuffer = { motorControl: { leftFront: 0, rightFront: 0, rightRear: 0, leftRear: 0 } };
+      // this.sendBuffer = { motorControl: { leftFront: 0, rightFront: 0, rightRear: 0, leftRear: 0 } };
+      this.sendBuffer.motorControl = { leftFront: 0, rightFront: 0, rightRear: 0, leftRear: 0 };
     }
     this.sendDataWS();
   }
 
   setColor(r, g, b) {
+    // 1. 添加输入值验证
+    const validateRGB = (value) => {
+      return Number.isInteger(value) && value >= 0 && value <= 255;
+    };
+
     let rgb = {};
     if (r === undefined && g === undefined && b === undefined) {
-      rgb = { r: this.color.r, g: this.color.g, b: this.color.b };
+      // 使用当前颜色
+      rgb = {
+        r: this.color.r || 0,
+        g: this.color.g || 0,
+        b: this.color.b || 0
+      };
     } else if (g === undefined || b === undefined) {
-      rgb = Color.hexToRgb(r);
+      // 处理十六进制颜色值
+      try {
+        rgb = Color.hexToRgb(r);
+        if (!rgb) throw new Error('Invalid hex color');
+      } catch (error) {
+        console.error('Invalid hex color value:', error);
+        return;
+      }
     } else {
-      rgb = { r: r, g: g, b: b };
+      // 验证RGB值
+      if (!validateRGB(r) || !validateRGB(g) || !validateRGB(b)) {
+        console.error('Invalid RGB values. Values must be integers between 0 and 255');
+        return;
+      }
+      rgb = { r, g, b };
     }
-    this.color = rgb;
-    rgb = {
-      r: rgb.r * this.brightness / 100,
-      g: rgb.g * this.brightness / 100,
-      b: rgb.b * this.brightness / 100,
-    }
-    this.sendBuffer.rgb = rgb;
+    this.color = { ...rgb };
+    const brightness = Math.max(0, Math.min(100, this.brightness)) / 100;
+    // const brightness = Math.pow(Math.max(0, Math.min(100, this.brightness)) / 100, 2);
+
+    this.sendBuffer.rgb = {
+      r: Math.round(rgb.r * brightness),
+      g: Math.round(rgb.g * brightness),
+      b: Math.round(rgb.b * brightness)
+    };
     this.sendDataWS();
   }
   // 增加亮度
   increaseBrightness(value) {
-    this.brightness += value;
-    let r = this.sendBuffer.rgb.r;
-    let g = this.sendBuffer.rgb.g;
-    let b = this.sendBuffer.rgb.b;
-    this.setColor(r, g, b);
+    // 计算亮度增减的百分比
+    const change = (this.brightness * value) / 100;
+    const newBrightness = this.brightness + change;
+
+    // 限制亮度在 0 到 100 范围内
+    if (newBrightness > 100) {
+      this.brightness = 100;
+      console.warn("亮度已达到最大值");
+    } else if (newBrightness < 0) {
+      this.brightness = 0;
+      console.warn("亮度已达到最小值");
+    } else {
+      this.setBrightness(newBrightness);
+    }
   }
+
+
   // 设置亮度
   setBrightness(value) {
+    if (!this.sendBuffer.rgb) {
+      this.sendBuffer.rgb = { r: 0, g: 0, b: 0 };
+    }
     this.brightness = value;
     let r = this.sendBuffer.rgb.r;
     let g = this.sendBuffer.rgb.g;
     let b = this.sendBuffer.rgb.b;
+    r = Math.min(255, Math.max(0, r * this.brightness)); // 防止超出范围
+    g = Math.min(255, Math.max(0, g * this.brightness));
+    b = Math.min(255, Math.max(0, b * this.brightness));
     this.setColor(r, g, b);
   }
   // 关闭灯条
@@ -618,6 +671,17 @@ class ZeusCar {
       return this._ws.getDeviceInfo();
     }
   }
+
+  /**
+   * 获取webSocket 所有数据
+   * @return {object} 设备的连接状态
+   */
+  getWebSocketData() {
+    if (this._ws) {
+      return this._ws.getWebSocketData();
+    }
+  }
+
   /**
    * 获取设备的连接状态
    * @return {boolean} 设备的连接状态
@@ -904,7 +968,7 @@ class ZeusCarBlocks {
           opcode: 'motorSpeedFor',
           text: formatMessage({
             id: 'zeusCar.motorSpeedFor',
-            default: 'move at LF [MOTOR1] RF[MOTOR2] RR [MOTOR3] LR [MOTOR4] % speed for [TIME] secs',
+            default: 'move at LF [MOTOR1] LR [MOTOR2] RF [MOTOR3] RR [MOTOR4] % speed for [TIME] secs',
             description: 'Setting the motor travel speed time'
           }),
           blockType: BlockType.COMMAND,
@@ -936,7 +1000,7 @@ class ZeusCarBlocks {
           opcode: 'motorSpeed',
           text: formatMessage({
             id: 'zeusCar.motorSpeed',
-            default: 'move at LF [MOTOR1] RF[MOTOR2] RR [MOTOR3] LR [MOTOR4] % speed',
+            default: 'move at LF [MOTOR1] LR [MOTOR2] RF [MOTOR3] RR [MOTOR4] % speed',
             description: 'Setting the motor travel speed'
           }),
           blockType: BlockType.COMMAND,
@@ -1211,7 +1275,7 @@ class ZeusCarBlocks {
           opcode: 'lineOffset',
           text: formatMessage({
             id: 'zeusCar.lineOffset',
-            default: 'lineOffset',
+            default: 'line offset',
             description: 'lineOffset'
           }),
           blockType: BlockType.REPORTER,
@@ -1720,9 +1784,9 @@ class ZeusCarBlocks {
   motorSpeedFor(args) {
     console.log(args);
     let leftFront = Cast.toNumber(args.MOTOR1);
-    let rightFront = Cast.toNumber(args.MOTOR2);
-    let rightRear = Cast.toNumber(args.MOTOR3);
-    let leftRear = Cast.toNumber(args.MOTOR4);
+    let leftRear = Cast.toNumber(args.MOTOR2);
+    let rightFront = Cast.toNumber(args.MOTOR3);
+    let rightRear = Cast.toNumber(args.MOTOR4);
     let time = Cast.toNumber(args.TIME);
     let motorSpeed = { leftFront: leftFront, rightFront: rightFront, rightRear: rightRear, leftRear: leftRear };
     this._peripheral.motorControl(motorSpeed);
@@ -1743,9 +1807,9 @@ class ZeusCarBlocks {
   motorSpeed(args) {
     console.log(args);
     let leftFront = Cast.toNumber(args.MOTOR1);
-    let rightFront = Cast.toNumber(args.MOTOR2);
-    let rightRear = Cast.toNumber(args.MOTOR3);
-    let leftRear = Cast.toNumber(args.MOTOR4);
+    let leftRear = Cast.toNumber(args.MOTOR2);
+    let rightFront = Cast.toNumber(args.MOTOR3);
+    let rightRear = Cast.toNumber(args.MOTOR4);
     let motorSpeed = { leftFront: leftFront, rightFront: rightFront, rightRear: rightRear, leftRear: leftRear };
     this._peripheral.motorControl(motorSpeed);
   }
@@ -1807,6 +1871,7 @@ class ZeusCarBlocks {
   // 当IR被遮挡
   whenPinBlocked(args) {
     let irObstacle = this._peripheral.irObstacle;
+    if (!irObstacle) return false;
     if (args.AVOIDANCE === "left") {
       return irObstacle.left === 0 ? true : false;
     } else {
@@ -1846,34 +1911,42 @@ class ZeusCarBlocks {
   // IR 状态  遮挡为数字0
   isBlocked(args) {
     let irObstacle = this._peripheral.irObstacle;
-    if (!irObstacle) return "1";
+    // if (!irObstacle) return "1";
+    if (!irObstacle) return "0";
     if (args.AVOIDANCE === "left") {
-      return irObstacle.left === 0 ? "0" : "1";
+      // return irObstacle.left === 0 ? "0" : "1";
+      return irObstacle.left === 0 ? "1" : "0";
     } else {
-      return irObstacle.right === 0 ? "0" : "1";
+      // return irObstacle.right === 0 ? "0" : "1";
+      return irObstacle.right === 0 ? "1" : "0";
     }
   }
 
   iRLeftState() {
     const irObstacle = this._peripheral.irObstacle;
     if (irObstacle) {
-      return irObstacle.left === 0 ? "0" : "1";
+      // return irObstacle.left === 0 ? "0" : "1";
+      return irObstacle.left === 0 ? "1" : "0";
     } else {
-      return "1";
+      // return "1";
+      return "0";
     }
   }
   iRRightState() {
     const irObstacle = this._peripheral.irObstacle;
     if (irObstacle) {
-      return irObstacle.right === 0 ? "0" : "1";
+      // return irObstacle.right === 0 ? "0" : "1";
+      return irObstacle.right === 0 ? "1" : "0";
     } else {
-      return "1";
+      // return "1";
+      return "0";
     }
   }
 
   // 在线上
   existLine() {
     let grayscaleValue = this._peripheral.receiveBuffer.grayscaleValue;
+    if (!this._peripheral.receiveBuffer.grayscaleState) return false;
     let lineAngles = this._peripheral.receiveBuffer.grayscaleState.angle;
     let lineOffset = this._peripheral.receiveBuffer.grayscaleState.offset;
     if (!lineAngles || !lineOffset) return false;
@@ -1886,6 +1959,7 @@ class ZeusCarBlocks {
   // 出线
   outLine() {
     let grayscaleValue = this._peripheral.receiveBuffer.grayscaleValue;
+    if (!this._peripheral.receiveBuffer.grayscaleState) return false;
     let lineAngles = this._peripheral.receiveBuffer.grayscaleState.angle;
     let lineOffset = this._peripheral.receiveBuffer.grayscaleState.offset;
     if (!lineAngles || !lineOffset) return false;
@@ -1938,7 +2012,7 @@ class ZeusCarBlocks {
   }
   // 线的角度
   lineAngles() {
-    console.log("lineAngles");
+    // console.log("lineAngles");
     if (!this._peripheral.receiveBuffer.grayscaleState) return 0;
     let lineAngles = this._peripheral.receiveBuffer.grayscaleState.angle;
     if (lineAngles) {
@@ -1993,7 +2067,7 @@ class ZeusCarBlocks {
   }
 
   displayColor(args) {
-    console.log(args)
+    // console.log(args)
     let r = Cast.toNumber(args.COLOR1);
     let g = Cast.toNumber(args.COLOR2);
     let b = Cast.toNumber(args.COLOR3);
@@ -2005,9 +2079,10 @@ class ZeusCarBlocks {
 
   // 增加亮度
   increaseLightBrightness(args) {
-    console.log(args)
+    console.log(args);
     let value = Cast.toNumber(args.VALUE);
     this._peripheral.increaseBrightness(value);
+    // this._peripheral.setBrightness(value);
   }
 
   // 设置亮度
