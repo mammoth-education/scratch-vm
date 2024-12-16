@@ -251,23 +251,14 @@ class GalaxyRVR {
 
     // 设置舵机角度
     setServoAngle(data) {
-        if (data > 140) {
-            this.sendBuffer.servoAngle = 140;
-        } else if (data < 0) {
-            this.sendBuffer.servoAngle = 0;
-        }
+        this.sendBuffer.servoAngle = Math.max(0, Math.min(data, 140));
         this.sendDataWS();
     }
     // 增加舵机角度
     addServoAngle(data) {
-        if (this.sendBuffer.servoAngle) {
-            this.sendBuffer.servoAngle += data;
-            if (this.sendBuffer.servoAngle > 140) {
-                this.sendBuffer.servoAngle = 140;
-            }
-        } else {
-            this.sendBuffer.servoAngle = 90 + data;
-        }
+        this.sendBuffer.servoAngle = this.sendBuffer.servoAngle || 0;
+        this.sendBuffer.servoAngle += data;
+        this.sendBuffer.servoAngle = Math.max(0, Math.min(this.sendBuffer.servoAngle, 140));
         this.sendDataWS();
     }
     // setColor(r, g, b) {
