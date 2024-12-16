@@ -48,6 +48,10 @@ class MjpgStreamer {
     if (!renderer) return;
 
     const image = new Image();
+    if (image.complete && image.naturalWidth === 0) {
+      console.warn('Image failed to load');
+      return;
+    }
     image.crossOrigin = 'anonymous';
     image.src = url;
 
