@@ -251,7 +251,11 @@ class GalaxyRVR {
 
     // 设置舵机角度
     setServoAngle(data) {
-        this.sendBuffer.servoAngle = data;
+        if (data > 140) {
+            this.sendBuffer.servoAngle = 140;
+        } else if (data < 0) {
+            this.sendBuffer.servoAngle = 0;
+        }
         this.sendDataWS();
     }
     // 增加舵机角度
@@ -523,7 +527,7 @@ class GalaxyRVR {
         return this.receiveBuffer.BatteryVoltage;
     }
     get servoAngle() {
-        return this.sendBuffer.servoAngle ? this.sendBuffer.servoAngle : 90;
+        return this.sendBuffer.servoAngle ? this.sendBuffer.servoAngle : 0;
     }
 }
 
@@ -1418,7 +1422,11 @@ class GalaxyRVRBlocks {
     distance() {
         let distance = this._peripheral.distance / 10;
         distance = Math.round(distance * 10) / 10;
-        return distance;
+        if (distance = 6552.6) {
+            return null;
+        } else {
+            return distance;
+        }
     }
 
     // 当左右IR遮挡
@@ -1615,7 +1623,7 @@ class GalaxyRVRBlocks {
     }
 
     battery() {
-        let batteryVoltage = this._peripheral.batteryVoltage;
+        let batteryVoltage = this._peripheral.batteryVoltage * 0.1;
         return batteryVoltage ? batteryVoltage + "V" : "";
     }
 }
