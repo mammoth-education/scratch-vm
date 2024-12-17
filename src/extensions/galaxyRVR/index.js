@@ -1590,8 +1590,10 @@ class GalaxyRVRBlocks {
         } else {
             // let url = "http://192.168.4.1:9000/mjpg";
             let url = this._peripheral.getDeviceInfo();
-            url = `http://${url.ip}:9000/mjpg`
-            this.runtime.ioDevices.mjpg.start(url);
+            if (url && url.ip) {
+                url = `http://${url.ip}:9000/mjpg`
+                this.runtime.ioDevices.mjpg.start(url);
+            }
         }
     }
 
