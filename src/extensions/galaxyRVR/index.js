@@ -1413,7 +1413,7 @@ class GalaxyRVRBlocks {
     distance() {
         let distance = this._peripheral.distance / 10;
         distance = Math.round(distance * 10) / 10;
-        if (distance = 6552.6) {
+        if (distance === 6552.6) {
             return null;
         } else {
             return distance;
