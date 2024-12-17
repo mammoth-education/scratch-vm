@@ -48,10 +48,6 @@ class MjpgStreamer {
     if (!renderer) return;
 
     const image = new Image();
-    if (image.complete && image.naturalWidth === 0) {
-      console.warn('Image failed to load');
-      return;
-    }
     image.crossOrigin = 'anonymous';
     image.src = url;
 
@@ -88,19 +84,24 @@ class MjpgStreamer {
           context.rotate(Math.PI);
           drawOrigin = [-canvas.width / 2, -canvas.height / 2];
         }
-        context.drawImage(image,
-          0, 0, image.width, image.height,
-          ...drawOrigin, ...MjpgStreamer.DIMENSIONS);
+        try {
+          context.drawImage(image,
+            0, 0, image.width, image.height,
+            ...drawOrigin, ...MjpgStreamer.DIMENSIONS);
 
-        const imageData = context.getImageData(0, 0, ...MjpgStreamer.DIMENSIONS);
+          const imageData = context.getImageData(0, 0, ...MjpgStreamer.DIMENSIONS);
 
-        if (!imageData) {
-          renderer.updateBitmapSkin(this._skinId, new ImageData(...MjpgStreamer.DIMENSIONS), 1);
-          return;
+          if (!imageData) {
+            renderer.updateBitmapSkin(this._skinId, new ImageData(...MjpgStreamer.DIMENSIONS), 1);
+            return;
+          }
+
+          renderer.updateBitmapSkin(this._skinId, imageData, 1);
+          this.runtime.requestRedraw();
+        } catch (error) {
+          console.error('Failed to draw image:', error);
+          this._renderPreviewFrame = null; // 停止渲染
         }
-
-        renderer.updateBitmapSkin(this._skinId, imageData, 1);
-        this.runtime.requestRedraw();
       };
 
       this._renderPreviewFrame();
