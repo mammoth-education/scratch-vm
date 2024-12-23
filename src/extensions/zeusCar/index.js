@@ -133,6 +133,16 @@ class ZeusCar {
     //     dataview.setUint8(index, Command.CalibrateCompass);
     //   }
     // }
+    if (sendBuffer.hasOwnProperty("lineTrack")) {
+      index += 1;
+      dataview.setUint8(index, Command.LineTrackMode);
+      index += 1;
+      sendBuffer.lineTrack.switch ? dataview.setUint8(index, 1) : dataview.setUint8(index, 0);
+      index += 1;
+      sendBuffer.lineTrack.geomagnetism ? dataview.setUint8(index, 1) : dataview.setUint8(index, 0);
+      index += 1;
+      dataview.setUint8(index, sendBuffer.lineTrack.speed);
+    }
     if (sendBuffer.hasOwnProperty("calibration")) {
       index += 1;
       dataview.setUint8(index, Command.CalibrateCompass);
@@ -342,6 +352,23 @@ class ZeusCar {
     this.sendDataWS();
   }
 
+  // 清除其它模式，只保留当前模式
+  clearOtherMode(currentMode) {
+    // 定义有效的键
+    const validKeys = ["lineTrack", "motorControl", "move", "moveTime", "calibration", "stopAll"];
+    // 校验参数是否在有效键中
+    if (!validKeys.includes(currentMode)) {
+      console.error(`Invalid key: ${currentMode}`);
+      return;
+    }
+    // 遍历对象，删除其他键
+    for (const key of validKeys) {
+      if (key !== currentMode) {
+        delete this.sendBuffer[key];
+      }
+    }
+  }
+
   // 转弯Clockwise
   // makeTurn(angle, direction) {
   //   let carAngle = this.receiveBuffer.carAngle;
@@ -360,7 +387,7 @@ class ZeusCar {
   // }
 
   makeTurn(direction) {
-    this.sendBuffer = { stopAll: false };
+    // this.sendBuffer = { stopAll: false };
     let move = {
       moveAngle: 0,
       speed: 0,
@@ -401,9 +428,9 @@ class ZeusCar {
     // this.sendBuffer = { stopAll: false };
     // let move = { moveAngle: angle, speed: this.speed, rotating: 0 };
     // this.sendBuffer = { move: move };
-    this.sendBuffer.stopAll = false;
     let move = { moveAngle: angle, speed: this.speed, rotating: 0 };
     this.sendBuffer.move = move;
+    this.clearOtherMode("move");
     this.sendDataWS();
   }
 
@@ -411,25 +438,28 @@ class ZeusCar {
     // this.sendBuffer = { stopAll: false };
     // let moveTime = { moveAngle: angle, speed: this.speed, rotating: 0, time: time };
     // this.sendBuffer = { moveTime: moveTime };
-    this.sendBuffer.stopAll = false;
     let moveTime = { moveAngle: angle, speed: this.speed, rotating: 0, time: time };
     this.sendBuffer.moveTime = moveTime;
+    this.clearOtherMode("moveTime");
     this.sendDataWS();
   }
 
   motorControl(motorSpeed) {
     // this.sendBuffer = { stopAll: false };
     // this.sendBuffer = { motorControl: motorSpeed };
-    this.sendBuffer.stopAll = false;
     this.sendBuffer.motorControl = motorSpeed;
+    this.clearOtherMode("motorControl");
     this.sendDataWS();
   }
 
   // 停止移动
   stopMotor() {
     clearInterval(this.setIntervalID);
-    this.sendBuffer = { stopAll: true };
-    this.sendBuffer = { calibration: 0 };
+    // this.sendBuffer = { stopAll: true };
+    delete this.sendBuffer.moveTime;
+    delete this.sendBuffer.calibration;
+    delete this.sendBuffer.stopAll;
+    delete this.sendBuffer.motorControl;
     let move = { moveAngle: 0, speed: 0, rotating: 0 };
     // this.sendBuffer = { move: move };
     this.sendBuffer.move = move;
@@ -438,6 +468,13 @@ class ZeusCar {
       this.sendBuffer.motorControl = { leftFront: 0, rightFront: 0, rightRear: 0, leftRear: 0 };
     }
     this.sendDataWS();
+  }
+
+  // 停止一切动作
+  ZeusCarStopAll() {
+    this.sendBuffer = { stopAll: true };
+    this.sendDataWS();
+    delete this.sendBuffer.sendBuffer;
   }
 
   setColor(r, g, b) {
@@ -529,6 +566,13 @@ class ZeusCar {
     this.sendBuffer.headlights = data ? 1 : 0;
     this.sendDataWS();
   }
+  // 巡线
+  setLineTrackSwitch(data) {
+    let lineTrack = { switch: data ? 1 : 0, geomagnetism: 0, speed: this.speed };
+    this.sendBuffer.lineTrack = lineTrack;
+    this.clearOtherMode("lineTrack");
+    this.sendDataWS();
+  }
   // 校准
   calibration(calibration) {
     console.log("开始校准！", calibration)
@@ -617,8 +661,8 @@ class ZeusCar {
    */
   stopAll() {
     if (!this.isConnected()) return;
-    this.stopMotor();
-    this.turnOffLightStrip();
+    // this.stopMotor();
+    this.ZeusCarStopAll();
   }
 
   /**
@@ -1202,7 +1246,23 @@ class ZeusCarBlocks {
           blockType: BlockType.REPORTER,
         },
 
-
+        // LineTrack
+        {
+          opcode: 'lineTrack',
+          text: formatMessage({
+            id: 'zeusCar.lineTrack',
+            default: 'line track [ONOFF]',
+            description: 'line track'
+          }),
+          blockType: BlockType.COMMAND,
+          arguments: {
+            ONOFF: {
+              type: ArgumentType.STRING,
+              menu: 'onOff',
+              defaultValue: "1"
+            }
+          }
+        },
 
         // existLine
         {
@@ -1943,6 +2003,14 @@ class ZeusCarBlocks {
     }
   }
 
+  // 巡线
+  lineTrack(args) {
+    console.log(args)
+    let data = data = Cast.toNumber(args.ONOFF) !== 0;
+    this._peripheral.setLineTrackSwitch(data);
+  }
+
+
   // 在线上
   existLine() {
     let grayscaleValue = this._peripheral.receiveBuffer.grayscaleValue;
@@ -2112,8 +2180,10 @@ class ZeusCarBlocks {
     } else {
       // let url = "http://192.168.4.1:9000/mjpg";
       let url = this._peripheral.getDeviceInfo();
-      url = url.video;
-      this.runtime.ioDevices.mjpg.start(url);
+      if (url && url.ip) {
+        url = `http://${url.ip}:9000/mjpg`
+        this.runtime.ioDevices.mjpg.start(url);
+      }
     }
   }
 
@@ -2139,7 +2209,7 @@ class ZeusCarBlocks {
 
   battery() {
     console.log("battery");
-    let batteryVoltage = this._peripheral.batteryVoltage;
+    let batteryVoltage = this._peripheral.batteryVoltage / 100 + 6;
     return batteryVoltage ? batteryVoltage + "V" : "";
   }
 }
