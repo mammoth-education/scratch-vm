@@ -1616,8 +1616,9 @@ class GalaxyRVRBlocks {
     }
 
     battery() {
-        let batteryVoltage = this._peripheral.batteryVoltage * 0.1;
-        return batteryVoltage ? batteryVoltage + "V" : "";
+        // let batteryVoltage = this._peripheral.batteryVoltage * 0.1;
+        let batteryVoltage = this._peripheral.batteryVoltage / 100 + 6;
+        return batteryVoltage ? batteryVoltage.toFixed(2) + "V" : "";
     }
 }
 
