@@ -23,7 +23,7 @@ class webSocket {
     this._scanedDevices = [], //扫描出来的设备
       this._reconnectCount = 0; //重连次数
     this._sendTimer = null;
-    this._DATA_SEND_INTERVAL = 30; //发送数据间隔时间
+    this._DATA_SEND_INTERVAL = 100; //发送数据间隔时间
     this._keepAliveInterval = null;
     this._isConnected = false; //是否连接
     this._isStarted = false; //是否开始发送数据
