@@ -645,6 +645,16 @@ class ZeusCar {
   }
 
   /**
+     * 控制是否发送数据到设备
+     * @param {obj} state 是否发送数据到设备
+     */
+  setSendDataState(extensionId, state) {
+    if (this._ws) {
+      this._ws.setSendDataState(state);
+    }
+  }
+
+  /**
    * 获取设备连接的WiFi信息
    * @param {obj} data wifi名称
    */

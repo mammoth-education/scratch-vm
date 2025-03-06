@@ -322,13 +322,6 @@ class GalaxyRVR {
         this.sendDataWS();
     }
     // 增加亮度
-    // increaseBrightness(value) {
-    //     this.brightness += value;
-    //     let r = this.sendBuffer.rgb.r;
-    //     let g = this.sendBuffer.rgb.g;
-    //     let b = this.sendBuffer.rgb.b;
-    //     this.setColor(r, g, b);
-    // }
     increaseBrightness(value) {
         // 计算亮度增减的百分比
         const change = (this.brightness * value) / 100;
@@ -346,13 +339,6 @@ class GalaxyRVR {
         }
     }
     // 设置亮度
-    // setBrightness(value) {
-    //     this.brightness = value;
-    //     let r = this.sendBuffer.rgb.r;
-    //     let g = this.sendBuffer.rgb.g;
-    //     let b = this.sendBuffer.rgb.b;
-    //     this.setColor(r, g, b);
-    // }
     setBrightness(value) {
         if (!this.sendBuffer.rgb) {
             this.sendBuffer.rgb = { r: 0, g: 0, b: 0 };
@@ -412,6 +398,17 @@ class GalaxyRVR {
             this._ws.setDeviceWifi(data);
         }
     }
+
+    /**
+     * 控制是否发送数据到设备
+     * @param {obj} state 是否发送数据到设备
+     */
+    setSendDataState(extensionId, state) {
+        if (this._ws) {
+            this._ws.setSendDataState(state);
+        }
+    }
+
 
     /**
      * 获取设备连接的WiFi信息
