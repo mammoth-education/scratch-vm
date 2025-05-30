@@ -435,7 +435,7 @@ class GalaxyRVR {
      * 扫描周围的设备
      */
     scan() {
-        this._ws = new WS(this._runtime, this._extensionId, this.dataConverter(), this.onReceive)
+        this._ws = new WS(this._runtime, this._extensionId, this.onReceive)
     }
 
     /**
@@ -447,6 +447,7 @@ class GalaxyRVR {
             let ip = this.getDeviceInfo();
             ip = `ws://${ip.ip}:30102`
             this._ws.connectToDevice(ip);
+            this.sendDataWS();
         }
     }
 
@@ -488,6 +489,14 @@ class GalaxyRVR {
             connected = this._ws.isConnected();
         }
         return connected;
+    }
+
+    /**
+   * 获取设备发送的数据
+   * @return {JSON} 获取设备发送的数据
+   */
+    getReceiveBuffer() {
+        return this._ws ? this.receiveBuffer : null;
     }
 
     /**

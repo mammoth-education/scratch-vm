@@ -13,6 +13,7 @@ const builtinExtensions = {
     // but serves as a reference for loading core blocks as extensions.
     coreExample: () => require('../blocks/scratch3_core_example'),
     // These are the non-core built-in extensions.
+    piCarX: () => require('../extensions/piCarX'),
     zeusCar: () => require('../extensions/zeusCar'),
     galaxyRVR: () => require('../extensions/galaxyRVR'),
     kaka: () => require('../extensions/mammoth_kaka'),

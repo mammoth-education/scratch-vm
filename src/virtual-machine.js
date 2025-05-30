@@ -142,6 +142,10 @@ class VirtualMachine extends EventEmitter {
         this.runtime.on(Runtime.PERIPHERAL_CONNECTION_LOST_ERROR, data =>
             this.emit(Runtime.PERIPHERAL_CONNECTION_LOST_ERROR, data)
         );
+        // AIerrot
+        this.runtime.on(Runtime.BLOCKALERT, data =>
+            this.emit(Runtime.BLOCKALERT, data)
+        );
         this.runtime.on(Runtime.PERIPHERAL_SCAN_TIMEOUT, () =>
             this.emit(Runtime.PERIPHERAL_SCAN_TIMEOUT)
         );
@@ -154,6 +158,10 @@ class VirtualMachine extends EventEmitter {
         this.runtime.on(Runtime.HAS_CLOUD_DATA_UPDATE, hasCloudData => {
             this.emit(Runtime.HAS_CLOUD_DATA_UPDATE, hasCloudData);
         });
+        // ai提示
+        this.runtime.on(Runtime.AiError, info => {
+            this.emit(Runtime.AiError, info);
+        })
 
         this.extensionManager = new ExtensionManager(this.runtime);
 
@@ -364,6 +372,10 @@ class VirtualMachine extends EventEmitter {
 
     setSendDataState(extensionId, data) {
         this.runtime.setSendDataState(extensionId, data);
+    }
+
+    setSendData(extensionId, type, data) {
+        this.runtime.setSendData(extensionId, type, data);
     }
 
     calibration(extensionId, state) {

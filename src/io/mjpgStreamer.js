@@ -32,6 +32,8 @@ class MjpgStreamer {
      * @type {string}
      */
     this._rotation = 'normal';
+    this.imageWidth = 0;
+    this.imageHeight = 0;
   }
 
   /**
@@ -85,6 +87,8 @@ class MjpgStreamer {
           drawOrigin = [-canvas.width / 2, -canvas.height / 2];
         }
         try {
+          this.imageWidth = image.width;
+          this.imageHeight = image.height;
           context.drawImage(image,
             0, 0, image.width, image.height,
             ...drawOrigin, ...MjpgStreamer.DIMENSIONS);

@@ -657,6 +657,9 @@ class Runtime extends EventEmitter {
     static get PERIPHERAL_CONNECTION_LOST_ERROR() {
         return 'PERIPHERAL_CONNECTION_LOST_ERROR';
     }
+    static get BLOCKALERT() {
+        return 'BLOCKALERT';
+    }
 
     /**
      * Event name for reporting that a peripheral has not been discovered.
@@ -1528,6 +1531,7 @@ class Runtime extends EventEmitter {
      * @param {number} peripheralId - the id of the peripheral.
      */
     connectPeripheral(extensionId, peripheralId) {
+        console.log(extensionId, peripheralId);
         if (this.peripheralExtensions[extensionId]) {
             this.peripheralExtensions[extensionId].connect(peripheralId);
         }
@@ -1644,6 +1648,12 @@ class Runtime extends EventEmitter {
     setSendDataState(extensionId, data) {
         if (this.peripheralExtensions[extensionId]) {
             this.peripheralExtensions[extensionId].setSendDataState(extensionId, data);
+        }
+    }
+
+    setSendData(extensionId, type, data) {
+        if (this.peripheralExtensions[extensionId]) {
+            this.peripheralExtensions[extensionId].setSendData(extensionId, type, data);
         }
     }
 
