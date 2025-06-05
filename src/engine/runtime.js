@@ -1061,11 +1061,28 @@ class Runtime extends EventEmitter {
             return this._convertSeparatorForScratchBlocks(blockInfo);
         }
 
+        if (blockInfo.blockType === 'label') {
+            return this._convertLabelForScratchBlocks(blockInfo);
+        }
+
         if (blockInfo.blockType === BlockType.BUTTON) {
             return this._convertButtonForScratchBlocks(blockInfo);
         }
 
         return this._convertBlockForScratchBlocks(blockInfo, categoryInfo);
+    }
+
+    /**
+     * Convert ExtensionBlockMetadata into label
+     * @param {ExtensionBlockMetadata} blockInfo - the block to convert
+     * @returns {ConvertedBlockInfo} - the converted & original block information
+     * @private
+     */
+    _convertLabelForScratchBlocks(blockInfo) {
+        return {
+            info: blockInfo,
+            xml: `<label text="${blockInfo.text}"></label>`
+        };
     }
 
     /**
