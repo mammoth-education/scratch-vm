@@ -116,7 +116,7 @@ class webSocket {
               video: data.video,
               Check: data.Check,
               ip: ip,
-              AI_API_KEY: data.AI_API_KEY,
+              ai_api_key: data.ai_api_key,
             };
             this._runtime.emit(
               this._runtime.constructor.PERIPHERAL_LIST_UPDATE,
@@ -362,10 +362,6 @@ class webSocket {
           if (message.io_data) {
             this._receivedData = message.io_data;
             // console.log("webSocket收到的数据：", this._receivedData);
-            let data = this._receivedData.grayscale_value;
-            if (data.includes(0)) {
-              console.log(message);
-            }
             this._onReceive(message.io_data);
           }
           return message;
@@ -468,6 +464,9 @@ class webSocket {
             this._payload = {};
           }
           // this._ws.send(this._payload);
+        } else {
+          this._payload = {};
+          this.send(this._payload);
         }
       } catch (err) {
         console.error("发送失败:", err);

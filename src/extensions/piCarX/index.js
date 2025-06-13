@@ -8,7 +8,6 @@ const MathUtil = require('../../util/math-util');
 const Cast = require('../../util/cast');
 const WS = require('../../io/webSocket');
 const Color = require('../../util/color');
-const SuccessImage = require('./assets/icon--success.svg');
 
 const DATA_SEND_INTERVAL = 5;
 
@@ -515,12 +514,7 @@ class PiCarX {
     this.speed = 80;
     this.sendBuffer = {};
     this.receiveBuffer = {};
-    this.cameraSwitch = false;
     this.brightness = 80;
-    this.color = { r: 204, g: 0, b: 0 };
-    this.DATA_START_BIT = 0xA0;
-    this.DATA_END_BIT = 0xA1;
-    this.intervalID = null;
     this.ai_think_result = "";
     this.ai_listen_result = "";
   }
@@ -536,9 +530,15 @@ class PiCarX {
     // console.log("receiveBuffer:", data.grayscale_value);
     const mapping = {
       ultrasonic_distance: "distance",
-      grayscale_value: "grayscale3Channel",
+      grayscale_data_raw: "grayscale3Channel",
+      grayscale_data: "grayscale3ChannelData",
+      grayscale_calibration: "grayscale3ChannelCalibration",
       grayscale_status: "grayscale3ChannelStatus",
-      battery_voltage: "BatteryVoltage",
+      grayscale_calibration_data: "grayscale3ChannelCalibrateData",
+      line_position: "linePosition",
+      is_on_line: "isOnLine",
+      is_on_cliff: "isOnCliff",
+      battery_voltage: "batteryVoltage",
       color_detection: "colorRecognition",
       face_detection: "faceRecognition",
       traffic_sign_detection: "trafficRecognition",
@@ -559,6 +559,10 @@ class PiCarX {
       reset_button_pressed: "rstButtonPressed",
       piper_saying: "piperSaying",
       piper_model: "piperModel",
+      steering_angle: "steeringAngle",
+      camera_pan_angle: "cameraPanAngle",
+      camera_tilt_angle: "cameraTiltAngle",
+      volume: "volume",
     };
     let receiveBuffer = {};
     // 遍历映射关系
@@ -591,14 +595,6 @@ class PiCarX {
     if (this._ws) {
       let data = this.dataConverter();
       this._ws.setSendPayload(data);
-      // setTimeout(() => {
-      //   this._ws.setSendPayload(this.sendBuffer);
-      // }, 20)
-      // 每次发完数据则重置发送状态
-
-      // setTimeout(() => {
-      //   this._ws.setSendDataState(false);
-      // }, DATA_SEND_INTERVAL);
     }
   }
 
@@ -866,28 +862,15 @@ class PiCarX {
    */
   send() {
     console.log('send======', this.sendBuffer)
-    // if (!this.isConnected()) return Promise.resolve();
-    // if (this._ws) {
-    //     this._ws.start();
-    // }
   }
 
-  get distance() {
-    return this.receiveBuffer.distance;
-  }
-  get grayscale3Channel() {
-    return this.receiveBuffer.grayscale3Channel;
-  }
-  get batteryVoltage() {
-    return this.receiveBuffer.BatteryVoltage;
-  }
   get receiveData() {
     return this.receiveBuffer;
   }
 
   /**
- *  
- * 详情请看 C:\Users\new\Desktop\workspace\mc\scratch-gui\src\reducers\alerts.js
+  *  
+  * 详情请看 C:\Users\new\Desktop\workspace\mc\scratch-gui\src\reducers\alerts.js
     let alertData = {
     alertId: "aiError",  // alertId 自定义
     alertType: "STANDARD",
@@ -900,7 +883,7 @@ class PiCarX {
     content: "初始化成功",
     maxDisplaySecs: 5,
     };
- */
+  */
   handleAiError(alertData) {
     this._runtime.emit(this._runtime.constructor.BLOCKALERT, alertData);
   }
@@ -1021,10 +1004,6 @@ class PiCarXBlocks {
     this.setVideoTransparency({
       TRANSPARENCY: this.globalVideoTransparency
     });
-    // 实例化时会运行下面代码导致设置this.sendBuffer
-    // this.videoToggle({
-    //   ONOFF: this.globalVideoState
-    // });
   }
 
   /**
@@ -1043,6 +1022,40 @@ class PiCarXBlocks {
       blockIconURI: iconURI,
       showStatusButton: true,
       blocks: [
+        {
+          opcode: 'dummyFunction',
+          blockType: 'label',
+          text: formatMessage({
+            id: 'piCarX.movement',
+            default: "Movement",
+            description: ''
+          }),
+        },
+        // 前进秒
+        {
+          opcode: 'moveAtFor',
+          text: formatMessage({
+            id: 'piCarX.moveAtFor',
+            default: '[DIRECTION] at [VALUE] % speed for [DURATION] secs',
+            description: 'Move in the specified direction for a set number of seconds'
+          }),
+          blockType: BlockType.COMMAND,
+          arguments: {
+            DIRECTION: {
+              type: ArgumentType.STRING,
+              menu: 'directions',
+              defaultValue: "forward"
+            },
+            VALUE: {
+              type: ArgumentType.NUMBER,
+              defaultValue: 80
+            },
+            DURATION: {
+              type: ArgumentType.NUMBER,
+              defaultValue: 1
+            }
+          },
+        },
         // 前进
         {
           opcode: 'moveAt',
@@ -1074,7 +1087,138 @@ class PiCarXBlocks {
           }),
           blockType: BlockType.COMMAND,
         },
+        // 设置预设动作
+        {
+          opcode: 'setPresetAction',
+          text: formatMessage({
+            id: 'piCarX.setPresetAction',
+            default: 'perform [ACTION]',
+            description: 'preset action.'
+          }),
+          blockType: BlockType.COMMAND,
+          arguments: {
+            ACTION: {
+              type: ArgumentType.STRING,
+              menu: 'aiAction',
+            }
+          }
+        },
+        // Setting the direction motor angle
+        {
+          opcode: 'settingDirectionAngle',
+          text: formatMessage({
+            id: 'piCarX.rudder.angle',
+            default: 'set steering angle to [VALUE] °',
+            description: 'Setting the direction angle'
+          }),
+          blockType: BlockType.COMMAND,
+          arguments: {
+            VALUE: {
+              type: ArgumentType.NUMBER,
+              defaultValue: 0
+            },
+          },
+        },
+        // 增加方向电机角度
+        {
+          opcode: 'addDirectionAngle',
+          text: formatMessage({
+            id: 'piCarX.rudder.add',
+            default: 'change steering angle by [VALUE] °',
+            description: 'add direction angle'
+          }),
+          blockType: BlockType.COMMAND,
+          arguments: {
+            VALUE: {
+              type: ArgumentType.NUMBER,
+              defaultValue: 10
+            }
+          }
+        },
 
+        {
+          opcode: 'dummyFunction',
+          blockType: 'label',
+          text: formatMessage({
+            id: 'piCarX.cameraServos',
+            default: "Camera Servos",
+            description: ''
+          }),
+        },
+        // Setting the camera direction motor angle X
+        {
+          opcode: 'settingcameraAngleX',
+          text: formatMessage({
+            id: 'piCarX.cameraRudder.angle.X',
+            default: 'set camera pan angle to [VALUE] °',
+            description: 'Setting the camera direction motor angle X'
+          }),
+          blockType: BlockType.COMMAND,
+          arguments: {
+            VALUE: {
+              type: ArgumentType.NUMBER,
+              defaultValue: 0
+            },
+          },
+        },
+        // Setting the camera direction motor angle Y
+        {
+          opcode: 'settingcameraAngleY',
+          text: formatMessage({
+            id: 'piCarX.cameraRudder.angle.Y',
+            default: 'set camera tilt angle to [VALUE] °',
+            description: 'Setting the camera direction motor angle Y'
+          }),
+          blockType: BlockType.COMMAND,
+          arguments: {
+            VALUE: {
+              type: ArgumentType.NUMBER,
+              defaultValue: 0
+            },
+          },
+        },
+        // 摄像头平移角度增加
+        {
+          opcode: 'addcameraAngleX',
+          text: formatMessage({
+            id: 'piCarX.cameraRudder.add.X',
+            default: 'change camera pan angle by [VALUE] °',
+            description: 'add camera pan angle'
+          }),
+          blockType: BlockType.COMMAND,
+          arguments: {
+            VALUE: {
+              type: ArgumentType.NUMBER,
+              defaultValue: 10
+            },
+          },
+        },
+        // 摄像头倾斜角度增加
+        {
+          opcode: 'addcameraAngleY',
+          text: formatMessage({
+            id: 'piCarX.cameraRudder.add.Y',
+            default: 'change camera tilt angle by [VALUE] °',
+            description: 'add camera pan angle'
+          }),
+          blockType: BlockType.COMMAND,
+          arguments: {
+            VALUE: {
+              type: ArgumentType.NUMBER,
+              defaultValue: 10
+            },
+          },
+        },
+
+        {
+          opcode: 'dummyFunction',
+          blockType: 'label',
+          text: formatMessage({
+            id: 'piCarX.sensors',
+            default: "Sensors",
+            description: ''
+          }),
+        },
         // Wait for the ultrasonic distance to reach
         {
           opcode: 'whenDistance',
@@ -1148,53 +1292,62 @@ class PiCarXBlocks {
           }),
           blockType: BlockType.REPORTER,
         },
-        // Setting the direction motor angle
+        // 3路灰度模块值
         {
-          opcode: 'settingDirectionAngle',
+          opcode: 'grayData',
           text: formatMessage({
-            id: 'piCarX.rudder.angle',
-            default: 'set direction angle to [VALUE] degrees',
-            description: 'Setting the direction angle'
+            id: 'piCarX.grayData',
+            default: 'gray data [DATAPOSITION]',
+            description: 'gray data'
           }),
-          blockType: BlockType.COMMAND,
+          blockType: BlockType.REPORTER,
           arguments: {
-            VALUE: {
-              type: ArgumentType.NUMBER,
-              defaultValue: 0
-            },
-          },
+            DATAPOSITION: {
+              type: ArgumentType.STRING,
+              menu: 'dataPosition',
+              defaultValue: "0"
+            }
+          }
         },
-        // Setting the camera direction motor angle X
+        // 线路位置
         {
-          opcode: 'settingcameraAngleX',
+          opcode: 'linePosition',
           text: formatMessage({
-            id: 'piCarX.cameraRudder.angle.X',
-            default: 'set camera angle to [VALUE] degrees X',
-            description: 'Setting the camera direction motor angle X'
+            id: 'piCarX.linePosition',
+            default: 'line position',
+            description: 'line position'
           }),
-          blockType: BlockType.COMMAND,
-          arguments: {
-            VALUE: {
-              type: ArgumentType.NUMBER,
-              defaultValue: 0
-            },
-          },
+          blockType: BlockType.REPORTER,
         },
-        // Setting the camera direction motor angle Y
+        // 是否在线上
         {
-          opcode: 'settingcameraAngleY',
+          opcode: 'isOnLine',
           text: formatMessage({
-            id: 'piCarX.cameraRudder.angle.Y',
-            default: 'set camera angle to [VALUE] degrees Y',
-            description: 'Setting the camera direction motor angle Y'
+            id: 'piCarX.isOnLine',
+            default: 'line isOnLine',
+            description: 'line isOnLine'
           }),
-          blockType: BlockType.COMMAND,
-          arguments: {
-            VALUE: {
-              type: ArgumentType.NUMBER,
-              defaultValue: 0
-            },
-          },
+          blockType: BlockType.REPORTER,
+        },
+        // 是否是悬崖
+        {
+          opcode: 'isOnCliff',
+          text: formatMessage({
+            id: 'piCarX.isOnCliff',
+            default: 'line isOnCliff',
+            description: 'line isOnCliff'
+          }),
+          blockType: BlockType.REPORTER,
+        },
+
+        {
+          opcode: 'dummyFunction',
+          blockType: 'label',
+          text: formatMessage({
+            id: 'piCarX.camera',
+            default: "Camera",
+            description: ''
+          }),
         },
         // Turn on the camera.
         {
@@ -1213,12 +1366,44 @@ class PiCarXBlocks {
             }
           }
         },
+        // 设置摄像头画面
+        {
+          opcode: 'setRotation',
+          text: formatMessage({
+            id: 'piCarX.setRotation',
+            default: 'set orientation to [ROTATION]',
+            description: 'set orientation.'
+          }),
+          blockType: BlockType.COMMAND,
+          arguments: {
+            ROTATION: {
+              type: ArgumentType.STRING,
+              menu: 'rotations',
+              default: 'normal'
+            }
+          }
+        },
+        // 设置画面透明度
+        {
+          opcode: 'setVideoTransparency',
+          text: formatMessage({
+            id: 'piCarX.setVideoTransparency',
+            default: 'set video visibility to [TRANSPARENCY] %',
+            description: 'Controls transparency of the video preview layer'
+          }),
+          arguments: {
+            TRANSPARENCY: {
+              type: ArgumentType.NUMBER,
+              defaultValue: 100
+            }
+          }
+        },
         // Camera Color Recognition
         {
           opcode: 'cameraColorRecognition',
           text: formatMessage({
             id: 'piCarX.cameraColorRecognition',
-            default: 'camera color recognition [COLOR]',
+            default: 'set color recognition to [COLOR]',
             description: 'Camera Color Recognition.'
           }),
           blockType: BlockType.COMMAND,
@@ -1230,19 +1415,19 @@ class PiCarXBlocks {
             }
           }
         },
-        // camera face recognition
+        //  摄像头颜色识别数据
         {
-          opcode: 'cameraFaceRecognition',
+          opcode: 'cameraColorData',
           text: formatMessage({
-            id: 'piCarX.cameraFaceRecognition',
-            default: 'camera color recognition [ONOFF]',
-            description: 'Camera Face Recognition.'
+            id: 'piCarX.cameraColorData',
+            default: 'get color [COLORID]',
+            description: 'camera color'
           }),
-          blockType: BlockType.COMMAND,
+          blockType: BlockType.REPORTER,
           arguments: {
-            ONOFF: {
+            COLORID: {
               type: ArgumentType.STRING,
-              menu: 'onOff',
+              menu: 'colorID',
               defaultValue: "0"
             }
           }
@@ -1252,7 +1437,7 @@ class PiCarXBlocks {
           opcode: 'cameraTrafficSignsRecognition',
           text: formatMessage({
             id: 'piCarX.cameraTrafficSignsRecognition',
-            default: 'camera traffic signs recognition [ONOFF]',
+            default: 'set traffic signs recognition to [ONOFF]',
             description: 'camera Traffic Signs Recognition.'
           }),
           blockType: BlockType.COMMAND,
@@ -1264,12 +1449,22 @@ class PiCarXBlocks {
             }
           }
         },
+        // 摄像头交通标志识别数据
+        {
+          opcode: 'cameraTrafficData',
+          text: formatMessage({
+            id: 'piCarX.cameraTrafficData',
+            default: 'camera traffic',
+            description: 'camera traffic'
+          }),
+          blockType: BlockType.REPORTER,
+        },
         // camera QR Code Recognition
         {
           opcode: 'cameraQRCodeRecognition',
           text: formatMessage({
             id: 'piCarX.cameraQRCodeRecognition',
-            default: 'camera QR code recognition [ONOFF]',
+            default: 'set QR code recognition to [ONOFF]',
             description: 'camera QR Code Recognition.'
           }),
           blockType: BlockType.COMMAND,
@@ -1281,12 +1476,68 @@ class PiCarXBlocks {
             }
           }
         },
+        // 摄像头二维码识别数据
+        {
+          opcode: 'cameraQRCodeData',
+          text: formatMessage({
+            id: 'piCarX.cameraQRCodeData',
+            default: 'last detected QR code',
+            description: 'camera QRCode'
+          }),
+          blockType: BlockType.REPORTER,
+        },
+        // camera face recognition
+        {
+          opcode: 'cameraFaceRecognition',
+          text: formatMessage({
+            id: 'piCarX.cameraFaceRecognition',
+            default: 'set face detection to [ONOFF]',
+            description: 'Camera Face Recognition.'
+          }),
+          blockType: BlockType.COMMAND,
+          arguments: {
+            ONOFF: {
+              type: ArgumentType.STRING,
+              menu: 'onOff',
+              defaultValue: "0"
+            }
+          }
+        },
+        // 摄像头人脸识别数据
+        {
+          opcode: 'cameraFaceData',
+          text: formatMessage({
+            id: 'piCarX.cameraFaceData',
+            default: 'get face [COLORID]',
+            description: 'camera face'
+          }),
+          blockType: BlockType.REPORTER,
+          arguments: {
+            COLORID: {
+              type: ArgumentType.STRING,
+              menu: 'colorID',
+              defaultValue: "0"
+            }
+          }
+        },
+
+        {
+          opcode: 'dummyFunction',
+          blockType: 'label',
+          text: formatMessage({
+            id: 'piCarX.speaker',
+            default: "Speaker",
+            description: ''
+          }),
+        },
+
+
         // 前台音效
         {
           opcode: 'frontSoundList',
           text: formatMessage({
             id: 'piCarX.frontSoundList',
-            default: 'frontSound [FRONTSOUND]',
+            default: 'play sound [FRONTSOUND]',
             description: 'frontSound.'
           }),
           blockType: BlockType.COMMAND,
@@ -1298,12 +1549,12 @@ class PiCarXBlocks {
             }
           }
         },
-        // 后台音效
+        // 背景音乐播放
         {
           opcode: 'backSoundList',
           text: formatMessage({
             id: 'piCarX.backSoundList',
-            default: 'play background [BACKSOUND] music',
+            default: 'play background music [BACKSOUND]',
             description: 'backSoundList.'
           }),
           blockType: BlockType.COMMAND,
@@ -1315,28 +1566,13 @@ class PiCarXBlocks {
             }
           }
         },
-        // 后台音量
-        {
-          opcode: 'backSoundVolume',
-          text: formatMessage({
-            id: 'piCarX.backSoundVolume',
-            default: 'backSound volume [VALUE] %',
-            description: 'backSoundVolume.'
-          }),
-          blockType: BlockType.COMMAND,
-          arguments: {
-            VALUE: {
-              type: ArgumentType.NUMBER,
-              defaultValue: 90
-            },
-          },
-        },
-        // 后台音效播放
+
+        // 后台音效播放控制
         {
           opcode: 'backSoundPlayControl',
           text: formatMessage({
             id: 'piCarX.backSoundPlayControl',
-            default: 'backSound [SOUNDPLAYCONTROL]',
+            default: 'backSound music [SOUNDPLAYCONTROL]',
             description: 'backSoundPlay.'
           }),
           blockType: BlockType.COMMAND,
@@ -1348,28 +1584,58 @@ class PiCarXBlocks {
             }
           }
         },
-        // AIKey
-        // {
-        //   opcode: 'AIKey',
-        //   text: formatMessage({
-        //     id: 'piCarX.AIKey',
-        //     default: 'AIKey [VALUE]',
-        //     description: 'AIKey.'
-        //   }),
-        //   blockType: BlockType.COMMAND,
-        //   arguments: {
-        //     VALUE: {
-        //       type: ArgumentType.STRING,
-        //       defaultValue: " "
-        //     },
-        //   },
-        // },
+
+
+        // 增加音量
+        {
+          opcode: 'addBackSoundVolume',
+          text: formatMessage({
+            id: 'piCarX.addBackSoundVolume',
+            default: 'change volume by [VALUE] %',
+            description: 'addBackSoundVolume.'
+          }),
+          blockType: BlockType.COMMAND,
+          arguments: {
+            VALUE: {
+              type: ArgumentType.NUMBER,
+              defaultValue: 90
+            },
+          },
+        },
+        // 后台音量
+        {
+          opcode: 'backSoundVolume',
+          text: formatMessage({
+            id: 'piCarX.backSoundVolume',
+            default: 'set volume to [VALUE] %',
+            description: 'backSoundVolume.'
+          }),
+          blockType: BlockType.COMMAND,
+          arguments: {
+            VALUE: {
+              type: ArgumentType.NUMBER,
+              defaultValue: 90
+            },
+          },
+        },
+
+        {
+          opcode: 'dummyFunction',
+          blockType: 'label',
+          text: formatMessage({
+            id: 'piCarX.aiAssistant',
+            default: "AI Assistant",
+            description: ''
+          }),
+        },
+
+
         // AIAssistantID
         {
           opcode: 'AIAssistantID',
           text: formatMessage({
             id: 'piCarX.AIAssistantID',
-            default: 'AIAssistantID [VALUE]',
+            default: 'AI assistant ID [VALUE]',
             description: 'AIAssistantID.'
           }),
           blockType: BlockType.COMMAND,
@@ -1385,7 +1651,7 @@ class PiCarXBlocks {
           opcode: 'aiInit',
           text: formatMessage({
             id: 'piCarX.aiInit',
-            default: 'aiInit',
+            default: 'initialize AI assistant',
             description: 'aiInit'
           }),
           blockType: BlockType.COMMAND,
@@ -1395,7 +1661,7 @@ class PiCarXBlocks {
           opcode: 'listenAndWait',
           text: formatMessage({
             id: 'piCarX.listenAndWait',
-            default: 'listenAndWait',
+            default: 'listen and wait',
             description: 'listenAndWait'
           }),
           blockType: BlockType.COMMAND,
@@ -1405,7 +1671,7 @@ class PiCarXBlocks {
           opcode: 'reflections',
           text: formatMessage({
             id: 'piCarX.reflections',
-            default: '[THINKING] [THINK]',
+            default: 'ask AI [THINK] with [THINKING]',
             description: 'reflections'
           }),
           arguments: {
@@ -1435,27 +1701,12 @@ class PiCarXBlocks {
             }
           }
         },
-        // 本地说
-        {
-          opcode: 'sayLocal',
-          text: formatMessage({
-            id: 'piCarX.sayLocal',
-            default: 'say [SAY]',
-            description: 'sayLocal'
-          }),
-          arguments: {
-            SAY: {
-              type: ArgumentType.STRING,
-              defaultValue: " "
-            }
-          }
-        },
         // 语言模型
         {
           opcode: 'piperModels',
           text: formatMessage({
             id: 'piCarX.piperModels',
-            default: 'set model [MODEL]',
+            default: 'set voice model to [MODEL]',
             description: 'piperModels'
           }),
           arguments: {
@@ -1463,19 +1714,6 @@ class PiCarXBlocks {
               type: ArgumentType.STRING,
               menu: "piperModels"
             },
-            // NATIONS: {
-            //   type: ArgumentType.STRING,
-            //   menu: 'sayNations',
-            // },
-
-            // CHARACTER: {
-            //   type: ArgumentType.STRING,
-            //   menu: 'aiCharacter',
-            // },
-            // VOICELEVEL: {
-            //   type: ArgumentType.STRING,
-            //   menu: 'aiVoiceLevel',
-            // },
           }
         },
         // AI的状态
@@ -1483,7 +1721,7 @@ class PiCarXBlocks {
           opcode: 'aiState',
           text: formatMessage({
             id: 'piCarX.aiState',
-            default: 'aiState',
+            default: 'AI state',
             description: 'aiState'
           }),
           blockType: BlockType.REPORTER,
@@ -1509,7 +1747,7 @@ class PiCarXBlocks {
           opcode: 'setInputLanguage',
           text: formatMessage({
             id: 'piCarX.setInputLanguage',
-            default: 'set input language to [LANGUAGE]',
+            default: 'set listen language to [LANGUAGE]',
             description: 'input language.'
           }),
           blockType: BlockType.COMMAND,
@@ -1520,65 +1758,54 @@ class PiCarXBlocks {
             }
           }
         },
-        // 听到的内容
+
+        // 最近听到的语句
         {
-          opcode: 'heard',
+          opcode: 'lastHeard',
           text: formatMessage({
-            id: 'piCarX.heard',
-            default: 'heard',
-            description: 'heard'
+            id: 'piCarX.lastHeard',
+            default: 'last heard phrase',
+            description: 'lastHeard'
           }),
           blockType: BlockType.REPORTER,
         },
-        // 思考的答案
+        // AI 回答
         {
-          opcode: 'thoughtfulAnswers',
+          opcode: 'aiAnswer',
           text: formatMessage({
-            id: 'piCarX.thoughtfulAnswers',
-            default: 'thoughtfulAnswers',
-            description: 'thoughtfulAnswers'
+            id: 'piCarX.aiAnswer',
+            default: 'AI answer',
+            description: 'aiAnswer'
           }),
           blockType: BlockType.REPORTER,
         },
-        // 设置预设动作
         {
-          opcode: 'setPresetAction',
+          opcode: 'dummyFunction',
+          blockType: 'label',
           text: formatMessage({
-            id: 'piCarX.setPresetAction',
-            default: 'set preset action to [ACTION]',
-            description: 'preset action.'
+            id: 'piCarX.others',
+            default: "Others",
+            description: ''
           }),
-          blockType: BlockType.COMMAND,
-          arguments: {
-            ACTION: {
-              type: ArgumentType.STRING,
-              menu: 'aiAction',
-            }
-          }
         },
-        // 控制Led
+
+        // battery
         {
-          opcode: 'setLedSwitch',
+          opcode: 'battery',
           text: formatMessage({
-            id: 'piCarX.setLedSwitch',
-            default: 'set led to [ONOFF]',
-            description: 'set led'
+            id: 'piCarX.battery',
+            default: 'battery level',
+            description: 'battery level'
           }),
-          blockType: BlockType.COMMAND,
-          arguments: {
-            ONOFF: {
-              type: ArgumentType.STRING,
-              menu: 'onOff',
-              defaultValue: "0"
-            }
-          }
+          blockType: BlockType.REPORTER,
         },
+
         // 等待按钮按下
         {
           opcode: 'waitButtonPress',
           text: formatMessage({
             id: 'piCarX.waitButtonPress',
-            default: 'wait for [BUTTON] button press',
+            default: 'wait until [BUTTON] button is pressed',
             description: 'wait for button press'
           }),
           blockType: BlockType.COMMAND,
@@ -1590,12 +1817,13 @@ class PiCarXBlocks {
             }
           }
         },
+
         // 当按钮按下
         {
           opcode: 'whenButtonPress',
           text: formatMessage({
             id: 'piCarX.whenButtonPress',
-            default: 'when [BUTTON] button press',
+            default: 'when [BUTTON] button is pressed',
             description: 'when button press'
           }),
           blockType: BlockType.HAT,
@@ -1607,12 +1835,13 @@ class PiCarXBlocks {
             }
           }
         },
+
         // 按钮按下
         {
           opcode: 'isButtonPress',
           text: formatMessage({
             id: 'piCarX.isButtonPress',
-            default: '[BUTTON] is button press',
+            default: '[BUTTON] button is pressed?',
             description: 'is button press '
           }),
           blockType: BlockType.BOOLEAN,
@@ -1625,120 +1854,24 @@ class PiCarXBlocks {
           }
 
         },
-        // 设置摄像头画面
+
+        // 控制Led
         {
-          opcode: 'setRotation',
+          opcode: 'setLedSwitch',
           text: formatMessage({
-            id: 'piCarX.setRotation',
-            default: 'set camera image orientation to [ROTATION]',
-            description: 'rotation of the camera.'
+            id: 'piCarX.setLedSwitch',
+            default: 'turn robot HAT LED [ONOFF]',
+            description: 'set led'
           }),
           blockType: BlockType.COMMAND,
           arguments: {
-            ROTATION: {
+            ONOFF: {
               type: ArgumentType.STRING,
-              menu: 'rotations',
-              default: 'normal'
-            }
-          }
-        },
-        // 设置画面透明度
-        {
-          opcode: 'setVideoTransparency',
-          text: formatMessage({
-            id: 'piCarX.setVideoTransparency',
-            default: 'set video transparency to [TRANSPARENCY] %',
-            description: 'Controls transparency of the video preview layer'
-          }),
-          arguments: {
-            TRANSPARENCY: {
-              type: ArgumentType.NUMBER,
-              defaultValue: 0
-            }
-          }
-        },
-        // battery
-        {
-          opcode: 'battery',
-          text: formatMessage({
-            id: 'piCarX.battery',
-            default: 'battery level',
-            description: 'battery level'
-          }),
-          blockType: BlockType.REPORTER,
-        },
-        // 3路灰度模块
-        {
-          opcode: 'grayData',
-          text: formatMessage({
-            id: 'piCarX.grayData',
-            default: 'gray data [DATAPOSITION]',
-            description: 'gray data'
-          }),
-          blockType: BlockType.REPORTER,
-          arguments: {
-            DATAPOSITION: {
-              type: ArgumentType.STRING,
-              menu: 'dataPosition',
+              menu: 'onOff',
               defaultValue: "0"
             }
           }
         },
-        //  摄像头颜色识别数据
-        {
-          opcode: 'cameraColorData',
-          text: formatMessage({
-            id: 'piCarX.cameraColorData',
-            default: 'camera color [COLORID]',
-            description: 'camera color'
-          }),
-          blockType: BlockType.REPORTER,
-          arguments: {
-            COLORID: {
-              type: ArgumentType.STRING,
-              menu: 'colorID',
-              defaultValue: "0"
-            }
-          }
-        },
-        // 摄像头人脸识别数据
-        {
-          opcode: 'cameraFaceData',
-          text: formatMessage({
-            id: 'piCarX.cameraFaceData',
-            default: 'camera face [COLORID]',
-            description: 'camera face'
-          }),
-          blockType: BlockType.REPORTER,
-          arguments: {
-            COLORID: {
-              type: ArgumentType.STRING,
-              menu: 'colorID',
-              defaultValue: "0"
-            }
-          }
-        },
-
-        // 摄像头交通标志识别数据
-        {
-          opcode: 'cameraTrafficData',
-          text: formatMessage({
-            id: 'piCarX.cameraTrafficData',
-            default: 'camera traffic',
-            description: 'camera traffic'
-          }),
-          blockType: BlockType.REPORTER,
-        },
-        // 摄像头二维码识别数据
-        {
-          opcode: 'cameraQRCodeData',
-          text: formatMessage({
-            id: 'piCarX.cameraQRCodeData',
-            default: 'camera QRCode',
-            description: 'camera QRCode'
-          }),
-          blockType: BlockType.REPORTER,
-        }
       ],
       menus: {
         distanceOps: {
@@ -1781,22 +1914,6 @@ class PiCarXBlocks {
               }),
               value: "backward"
             },
-            // {
-            //   text: formatMessage({
-            //     id: 'piCarX.directions.turnLeft',
-            //     default: 'turn left',
-            //     description: 'turn left'
-            //   }),
-            //   value: "turn left"
-            // },
-            // {
-            //   text: formatMessage({
-            //     id: 'piCarX.directions.turnRight',
-            //     default: 'turn right',
-            //     description: 'turn right'
-            //   }),
-            //   value: "turn right"
-            // },
           ]
         },
         onOff: {
@@ -1895,13 +2012,6 @@ class PiCarXBlocks {
                 default: 'start engine',
                 description: 'frontSoundList'
               }), value: "1"
-            },
-            {
-              text: formatMessage({
-                id: 'piCarX.frontSound.three',
-                default: 'horn2',
-                description: 'frontSoundList'
-              }), value: "2"
             },
           ]
         },
@@ -2085,7 +2195,7 @@ class PiCarXBlocks {
             {
               text: formatMessage({
                 id: 'piCarX.thinking',
-                default: 'aaaa',
+                default: 'thinking',
                 description: 'frontSoundList'
               }),
               value: "0"
@@ -2093,7 +2203,7 @@ class PiCarXBlocks {
             {
               text: formatMessage({
                 id: 'piCarX.imageThinking',
-                default: 'bbbb',
+                default: 'imageThinking',
                 description: 'frontSoundList'
               }), value: "1"
             },
@@ -2116,13 +2226,6 @@ class PiCarXBlocks {
                 description: 'ash'
               }), value: "ash"
             },
-            // {
-            //   text: formatMessage({
-            //     id: 'piCarX.aiBallad',
-            //     default: 'ballad',
-            //     description: 'ballad'
-            //   }), value: "ballad"
-            // },
             {
               text: formatMessage({
                 id: 'piCarX.aiCoral',
@@ -2229,53 +2332,7 @@ class PiCarXBlocks {
             value: key
           }))
         },
-        // 人物菜单，根据国家动态生成
-        // aiCharacter: {
-        //   acceptReporters: true,
-        //   items: (args) => {
-        //     console.log(args);
-        //     const nation = args.NATIONS;
-        //     const characters = this.PIPER_MODELS[nation] || {};
-        //     return Object.keys(characters).map(character => ({
-        //       text: formatMessage({
-        //         id: `piCarX.aiAction.${ character } `,
-        //         default: character,
-        //         description: 'aiAction'
-        //       }),
-        //       value: character
-        //     }));
-        //   }
-        // },
-
-        // 发音等级菜单，根据人物动态生成
-        // aiVoiceLevel: {
-        //   acceptReporters: true,
-        //   items: (args) => {
-        //     const nation = args.NATIONS;
-        //     const character = args.AICHARACTER;
-        //     const levels = this.PIPER_MODELS[nation]?.[character] || {};
-        //     return Object.keys(levels).map(level => ({
-        //       text: formatMessage({
-        //         id: `piCarX.aiAction.${ level } `,
-        //         default: level,
-        //         description: 'aiAction'
-        //       }),
-        //       value: level
-        //     }));
-        //   }
-        // }
       },
-      customFieldTypes: {
-        aaa: {
-          output: "string",
-          implementation: () => { console.error("Work!") }
-        },
-        dynamic_menu: {
-          output: "string",
-          outputShape: ScratchBlocksConstants.OUTPUT_SHAPE_ROUND,
-          implementation: () => { console.error("Work!") }
-        }
-      }
     };
   }
 
@@ -2296,6 +2353,19 @@ class PiCarXBlocks {
     }
     return list;
   }
+
+  moveAtFor(args) {
+    let speed = Math.round(Cast.toNumber(args.VALUE));
+    let time = Math.round(Cast.toNumber(args.DURATION));
+    let direction = args.DIRECTION;
+    this._peripheral.motorControl(direction, speed);
+    return new Promise(resolve => {
+      setTimeout(() => {
+        this._peripheral.stopMotor();
+        resolve();
+      }, time * 1000);
+    })
+  }
   // 移动方向
   moveAt(args) {
     let speed = Math.round(Cast.toNumber(args.VALUE));
@@ -2312,9 +2382,8 @@ class PiCarXBlocks {
 
   // 当距离判断
   whenDistance(args) {
-    let distance = this._peripheral.distance / 10;
-    distance = Math.round(distance * 10) / 10;
-    const level = Cast.toNumber(args.LEVEL);
+    let distance = this._peripheral.receiveBuffer.distance;
+    let level = Number(distance.toFixed(1));
     if (args.OP === ">") {
       return distance > level;
     } else {
@@ -2326,9 +2395,9 @@ class PiCarXBlocks {
   waitUtilDistance(args) {
     return new Promise((resolve, reject) => {
       setInterval(() => {
-        let distance = this._peripheral.distance / 10;
-        distance = Math.round(distance * 10) / 10;
-        const level = Cast.toNumber(args.LEVEL);
+        let level = Cast.toNumber(args.LEVEL);
+        level = Math.round(level * 10) / 10;
+        let distance = this._peripheral.receiveBuffer.distance;
         if (args.OP === ">") {
           if (distance > level) resolve();
         } else {
@@ -2340,9 +2409,7 @@ class PiCarXBlocks {
 
   // 距离判断
   isDistance(args) {
-    // let distance = this._peripheral.distance / 10;
-    // distance = Math.round(distance * 10) / 10;
-    let distance = this._peripheral.distance
+    let distance = this._peripheral.receiveBuffer.distance
     const level = Cast.toNumber(args.LEVEL);
     if (args.OP === ">") {
       return distance > level;
@@ -2353,21 +2420,24 @@ class PiCarXBlocks {
 
   // 距离
   distance() {
-    // let distance = this._peripheral.distance / 10;
-    let distance = this._peripheral.distance;
+    let distance = this._peripheral.receiveBuffer.distance;
     return distance;
-    // distance = Math.round(distance * 10) / 10;
-    // if (distance === 6552.6) {
-    //   return null;
-    // } else {
-    //   return distance;
-    // }
   }
 
   // 设置舵机角度
   settingDirectionAngle(args) {
     let angle = Math.round(Cast.toNumber(args.VALUE));
     this._peripheral.updateServoAngle("steering", angle);
+    return Promise.resolve();
+  }
+
+  // 增加舵机角度
+  addDirectionAngle(args) {
+    let angle = Math.round(Cast.toNumber(args.VALUE));
+    let steeringAngle = this._peripheral.receiveBuffer.steeringAngle;
+    if (steeringAngle === undefined) return;
+    steeringAngle += angle;
+    this._peripheral.updateServoAngle("steering", steeringAngle);
     return Promise.resolve();
   }
 
@@ -2382,6 +2452,26 @@ class PiCarXBlocks {
   settingcameraAngleY(args) {
     let angle = Math.round(Cast.toNumber(args.VALUE));
     this._peripheral.updateServoAngle("camera_tilt", angle);
+    return Promise.resolve();
+  }
+
+  // 摄像头X轴增加
+  addcameraAngleX(args) {
+    let angle = Math.round(Cast.toNumber(args.VALUE));
+    let cameraPanAngle = this._peripheral.receiveBuffer.cameraPanAngle;
+    if (cameraPanAngle === undefined) return;
+    cameraPanAngle += angle;
+    this._peripheral.updateServoAngle("camera_pan", cameraPanAngle);
+    return Promise.resolve();
+  }
+
+  // 摄像头Y轴增加
+  addcameraAngleY(args) {
+    let angle = Math.round(Cast.toNumber(args.VALUE));
+    let cameraTiltAngle = this._peripheral.receiveBuffer.cameraTiltAngle;
+    if (cameraTiltAngle === undefined) return;
+    cameraTiltAngle += angle
+    this._peripheral.updateServoAngle("camera_tilt", cameraTiltAngle);
     return Promise.resolve();
   }
 
@@ -2441,8 +2531,19 @@ class PiCarXBlocks {
   backSoundList(args) {
     const sound = Cast.toNumber(args.BACKSOUND);
     console.log("sound", sound);
-    this._peripheral.updateSendBuffer("play_music", sound + 1);
+    this._peripheral.updateSendBuffer("play_music", sound);
     return Promise.resolve();
+  }
+
+  // 增加音效音量
+  addBackSoundVolume(args) {
+    let volume = Cast.toNumber(args.VALUE);
+    if (volume < 0) volume = 0;
+    if (volume > 100) volume = 100;
+    let cameraPanAngle = this._peripheral.receiveBuffer.volume;
+    if (cameraPanAngle === undefined) return;
+    cameraPanAngle += volume;
+    this._peripheral.updateSendBuffer("music_volume", volume);
   }
 
   // 后台音效播放控制
@@ -2613,6 +2714,18 @@ class PiCarXBlocks {
     return Promise.resolve();
   }
 
+  // 最近听到的语句
+  lastHeard() {
+    console.log("heard", this._peripheral.receiveData.listening);
+    let heard = this._peripheral.receiveData.listening;
+    return heard ? heard : "";
+  }
+  // ai回答
+  aiAnswer() {
+    let data = this._peripheral.receiveData.thinking;
+    return data ? data : "";
+  }
+
   // ai状态
   aiState() {
     let state = this._peripheral.receiveData.aiState;
@@ -2694,12 +2807,13 @@ class PiCarXBlocks {
   }
 
   battery() {
-    let batteryVoltage = this._peripheral.batteryVoltage;
+    let batteryVoltage = this._peripheral.receiveBuffer.batteryVoltage;
     batteryVoltage = MathUtil.clamp(batteryVoltage, 6.2, 8.2);
     batteryPercentage = (batteryVoltage - 6.2) / (8.2 - 6.2) * 100;
     return batteryPercentage ? batteryPercentage.toFixed(2) + "%" : "";
   }
 
+  // 灰度值
   grayData(args) {
     let data = Cast.toNumber(args.DATAPOSITION);
     const grayData = this._peripheral.receiveData.grayscale3Channel;
@@ -2710,6 +2824,34 @@ class PiCarXBlocks {
     } else if (data === 2) {
       return grayData ? grayData[2] : "";
     }
+  }
+
+  // 线路位置
+  linePosition() {
+    let data = this._peripheral.receiveData.linePosition;
+    return data !== null ? data : "";
+  }
+
+  // 是否在线上
+  isOnLine() {
+    let data = this._peripheral.receiveData.isOnLine;
+    return data ? data : false;
+  }
+
+  // 是否在悬崖
+  isOnCliff() {
+    let data = this._peripheral.receiveData.isOnCliff;
+    return data ? data : false;
+  }
+
+  // 巡线传感器检测
+  lineSensor(args) {
+    let value = Cast.toNumber(args.DATAPOSITION);
+    let data = this._peripheral.receiveData.grayscale3ChannelStatus;
+    if (value >= 0 && value < data.length) {
+      return data[value] === 1;
+    }
+    return false;
   }
 
   cameraColorData(args) {
@@ -2752,7 +2894,7 @@ class PiCarXBlocks {
 
   cameraTrafficData() {
     let cameraTrafficData = this._peripheral.receiveData.trafficRecognition;
-    const cameraTraffiList = ['none', 'stop', 'right', 'left', 'forward'];
+    // const cameraTraffiList = ['none', 'stop', 'right', 'left', 'forward'];
     return cameraTrafficData ? cameraTrafficData.t : "";
     // if (cameraTrafficData >= 0 && cameraTrafficData < cameraTraffiList.length) {
     //   return cameraTraffiList[cameraTrafficData];
@@ -2766,6 +2908,7 @@ class PiCarXBlocks {
     // return cameraQRCodeData ? JSON.stringify(cameraQRCodeData) : "";
     return cameraQRCodeData ? cameraQRCodeData.d : "";
   };
+  dummyFunction() { }
 }
 
 module.exports = PiCarXBlocks;
