@@ -2383,7 +2383,8 @@ class PiCarXBlocks {
   // 当距离判断
   whenDistance(args) {
     let distance = this._peripheral.receiveBuffer.distance;
-    let level = Number(distance.toFixed(1));
+    let level = Cast.toNumber(args.LEVEL);
+    level = Number(level.toFixed(1));
     if (args.OP === ">") {
       return distance > level;
     } else {
