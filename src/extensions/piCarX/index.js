@@ -586,6 +586,11 @@ class PiCarX {
     } else {
       receiveBuffer.listening = this.ai_listen_result;
     }
+    if (data.ultrasonic_distance > 450) {
+      receiveBuffer.distance = 450;
+    } else if (data.ultrasonic_distance < 2) {
+      receiveBuffer.distance = 2;
+    }
     this.receiveBuffer = receiveBuffer;
     // console.log("grayscale3Channel:", grayscale3Channel)
   }
@@ -1324,20 +1329,20 @@ class PiCarXBlocks {
           opcode: 'isOnLine',
           text: formatMessage({
             id: 'piCarX.isOnLine',
-            default: 'line isOnLine',
+            default: 'out of line?',
             description: 'line isOnLine'
           }),
-          blockType: BlockType.REPORTER,
+          blockType: BlockType.BOOLEAN,
         },
         // 是否是悬崖
         {
           opcode: 'isOnCliff',
           text: formatMessage({
             id: 'piCarX.isOnCliff',
-            default: 'line isOnCliff',
+            default: 'out cliff?',
             description: 'line isOnCliff'
           }),
-          blockType: BlockType.REPORTER,
+          blockType: BlockType.BOOLEAN,
         },
 
         {
@@ -1388,7 +1393,7 @@ class PiCarXBlocks {
           opcode: 'setVideoTransparency',
           text: formatMessage({
             id: 'piCarX.setVideoTransparency',
-            default: 'set video visibility to [TRANSPARENCY] %',
+            default: 'set video opacity to [TRANSPARENCY] %',
             description: 'Controls transparency of the video preview layer'
           }),
           arguments: {
@@ -2539,12 +2544,12 @@ class PiCarXBlocks {
   // 增加音效音量
   addBackSoundVolume(args) {
     let volume = Cast.toNumber(args.VALUE);
-    if (volume < 0) volume = 0;
-    if (volume > 100) volume = 100;
     let cameraPanAngle = this._peripheral.receiveBuffer.volume;
     if (cameraPanAngle === undefined) return;
     cameraPanAngle += volume;
-    this._peripheral.updateSendBuffer("music_volume", volume);
+    if (cameraPanAngle < 0) cameraPanAngle = 0;
+    if (cameraPanAngle > 100) cameraPanAngle = 100;
+    this._peripheral.updateSendBuffer("music_volume", cameraPanAngle);
   }
 
   // 后台音效播放控制
@@ -2802,7 +2807,8 @@ class PiCarXBlocks {
 
   // 视频透明度
   setVideoTransparency(args) {
-    const transparency = Cast.toNumber(args.TRANSPARENCY);
+    let transparency = Cast.toNumber(args.TRANSPARENCY);
+    transparency = 100 - transparency;
     this.globalVideoTransparency = transparency;
     this.runtime.ioDevices.mjpg.setPreviewGhost(transparency);
   }
