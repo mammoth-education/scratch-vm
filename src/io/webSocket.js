@@ -89,7 +89,12 @@ class webSocket {
           let ip = event.origin.split("//")[1].split(":")[0];
           if (data != null && data.Check) {
             const scanSuccess = { [ip]: socket };
-            this._scanSuccessList.push(scanSuccess);
+            // 判断是否已经存在相同的 IP
+            const socketExists = this._scanSuccessList.some(item => Object.keys(item)[0] === ip);
+            if (!socketExists) {
+              this._scanSuccessList.push(scanSuccess);
+            }
+            // console.log('扫描成功webSocketd对象列表：', this._scanSuccessList);
             if (this._deviceName) {
               // 添加数据
               this._deviceName[data.name] = {
@@ -118,11 +123,27 @@ class webSocket {
               ip: ip,
               ai_api_key: data.ai_api_key,
             };
+            // 判断是否已经存在相同的 info
+            const exists = this._scanedDevices.some(device =>
+              device.Name === info.Name &&
+              device.Type === info.Type &&
+              device.video === info.video &&
+              device.Check === info.Check &&
+              device.ip === info.ip &&
+              device.ai_api_key === info.ai_api_key
+            );
+
+            // 如果不存在，则推入新对象
+            if (!exists) {
+              this._scanedDevices.push(info);
+              // console.log('扫描设备列表：', this._scanedDevices);
+            }
             this._runtime.emit(
               this._runtime.constructor.PERIPHERAL_LIST_UPDATE,
-              this._deviceName
+              // this._deviceName
+              this._scanedDevices
             );
-            this._info = info;
+            // this._info = info;
             if (this._PING_PONG_TYPE_LIST.indexOf(info.Type) !== -1) {
               this._isPingPongType = true;
             }
@@ -158,121 +179,10 @@ class webSocket {
     });
   }
   // 连接设备
-  // connectToDevice(url) {
-  //   console.log("connectToDevice", url)
-  //   if (this.socket) {
-  //     this.socket.close();
-  //     this.socket = null;
-  //   }
-  //   this._clickConnect = true;
-  //   // 连接新设备
-  //   const socket = new WebSocket(url);
-  //   socket.binaryType = 'arraybuffer';
-  //   this.socket = socket;
-  //   // 当连接建立时触发
-  //   socket.onopen = () => {
-  //     console.log('已连接设备：', url);
-
-  //     // 保存连接成功的IP
-  //     const historyIp = JSON.parse(localStorage.getItem("historyIp"));
-  //     const ip = url.split("//")[1].split(":")[0];
-  //     if (!historyIp) {
-  //       const historyIp = [];
-  //       historyIp.push(ip);
-  //       localStorage.setItem("historyIp", JSON.stringify(historyIp));
-  //     } else {
-  //       // 判断是否已经存在
-  //       if (!historyIp.includes(ip)) {
-  //         historyIp.push(ip);
-  //         localStorage.setItem("historyIp", JSON.stringify(historyIp));
-  //       }
-  //     }
-
-  //     this._isConnected = true;
-  //     this._manualDisconnect = false;
-  //     this._runtime.emit(this._runtime.constructor.PERIPHERAL_CONNECTED);
-  //     this._isStarted = true; // 开始发送数据
-  //     this.start();
-  //     if (!this._isStarted) {
-  //       console.log("没有开始发送数据,开始发送ping");
-  //       this.keepAlive();
-  //     }
-  //   };
-
-  //   // 当接收到服务器发送的消息时触发
-  //   socket.onmessage = (event) => {
-  //     let message = event.data;
-  //     if (typeof (message) == "string" && message.substring(0, 4) != "pong") {
-  //       try {
-  //         message = JSON.parse(message);
-  //         // console.log('收到字符串：', message);
-  //         if (message.Name && message.video) {
-  //           const ipRegex = /\/\/([^\s\/:]+)(?::\d+)?/;
-  //           let match = url.match(ipRegex);
-  //           message.ip = match ? match[1] : "";
-  //           this._info = message;
-  //         }
-  //         if (message.state && message.state === "OK") {
-  //           console.log("Wifi修改成功！");
-  //         }
-  //         if (message.state && message.ip) {
-  //           this._devicesWifiData = {
-  //             StaIp: message.ip,
-  //           }
-  //           console.log("设备连接wifi成功！", this._devicesWifiData);
-  //         }
-  //         if (message.state && message.networks) {
-  //           this._networks = message.networks;
-  //         }
-
-  //         if (message.io_data) {
-  //           this._receivedData = message.io_data;
-  //           // console.log("webSocket收到的数据：", this._receivedData);
-  //           this._onReceive(message.io_data);
-  //         }
-  //         return message;
-  //       } catch (error) {
-  //         return;
-  //       }
-  //     } else {
-  //       // console.log('收到其他：', message);
-  //       this._receivedData = this._onReceive(message);
-  //       // console.log("收到的数据：", this._receivedData);
-  //     }
-  //   };
-
-  //   // 当连接关闭时触发
-  //   socket.onclose = (event) => {
-  //     this._isConnected = false;
-  //     this._isStarted = false;
-  //     this._networks = [];
-  //     this._clickConnect = false;
-  //     // if (event.code === 1000) {
-  //     console.log('WebSocket 连接已关闭!!!!!!');
-  //     // 修改block连接UI
-  //     this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
-  //     // 弹窗提示连接中断
-  //     this._runtime.emit(this._runtime.constructor.PERIPHERAL_CONNECTION_LOST_ERROR, {
-  //       message: `Lost connection to`,
-  //       extensionId: this._extensionId
-  //     });
-  //     if (this._manualDisconnect) {
-  //       this.reconnect();
-  //     }
-  //     // } else {
-  //     //   console.log('设备没电或设备主动断开连接');
-  //     // }
-  //   };
-
-  //   // 当发生错误时触发
-  //   socket.onerror = (error) => {
-  //     this._isConnected = false;
-  //     this._isStarted = false;
-  //     console.error('WebSocket 错误：', error);
-  //   };
-  // }
   connectToDevice(url) {
-    let ip = url.split("//")[1].split(":")[0];
+    console.log("开始连接设备：", url, this._scanSuccessList);
+    // let ip = url.split("//")[1].split(":")[0];
+    let ip = url;
     const socketObj = this._scanSuccessList.find(obj => obj[ip] !== undefined);
     // 关闭其它socket
     for (let i = 0; i < this._scanSuccessList.length; i++) {
@@ -297,7 +207,8 @@ class webSocket {
     const socket = socketObj[ip];
     this.socket = socket;
     console.log('已连接设备：', url);
-
+    const matchedDevice = this._scanedDevices.find(device => device.ip === ip); // 找到匹配的设备
+    this._info = matchedDevice;
     // 保存连接成功的IP
     const historyIp = JSON.parse(localStorage.getItem("historyIp"));
     if (!historyIp) {
@@ -492,6 +403,9 @@ class webSocket {
     if (data instanceof ArrayBuffer) {
       this.socket.send(data);
     } else if (typeof (data) == "object") {
+      if (Object.keys(data).length > 0) {
+        console.log("发送数据：", data);
+      }
       data = JSON.stringify(data);
       let newData = this.DATA_SEND_FIELD + data;
       // console.log("发送数据：", newData);
@@ -520,6 +434,7 @@ class webSocket {
       this.socket.close();
       this.socket = null;
     }
+    this.stopScanAndCloseSockets();
 
     // 验证IP格式
     const ipParts = deviceIp.split('.');
@@ -575,7 +490,8 @@ class webSocket {
             if (this._deviceName) {
               this._runtime.emit(
                 this._runtime.constructor.PERIPHERAL_LIST_UPDATE,
-                this._deviceName
+                // this._deviceName
+                this._scanedDevices
               );
             } else {
               this._runtime.emit(
