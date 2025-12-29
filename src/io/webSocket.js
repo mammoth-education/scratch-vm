@@ -63,6 +63,7 @@ class webSocket {
       // 创建 WebSocket 连接
       const socket = new WebSocket(url);
       // this._activeSockets.push(socket);
+      socket.binaryType = 'arraybuffer';
       let timerId = null;
       const cleanup = () => {
         clearTimeout(timerId);
@@ -248,6 +249,7 @@ class webSocket {
             message = JSON.parse(jsonStr);
           } else {
             console.log("不是DATA+开头的字符串：", message);
+            message = JSON.parse(message);
           }
 
           // console.log('收到字符串：', message);
