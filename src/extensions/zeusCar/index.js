@@ -687,10 +687,8 @@ class ZeusCar {
    * 连接设备
    * @param {number} id 设备的id
    */
-  connect(id) {
+  connect(ip) {
     if (this._ws) {
-      let ip = this.getDeviceInfo();
-      ip = `ws://${ip.ip}:30102`
       // 不知道什么原因，无法连接，可能是扫秒还未完成导致，所以延迟2秒再连接
       setTimeout(() => {
         this._ws.connectToDevice(ip);
@@ -705,6 +703,24 @@ class ZeusCar {
       }, 2000);
     }
   }
+  // connect(id) {
+  //   if (this._ws) {
+  //     let ip = this.getDeviceInfo();
+  //     ip = `ws://${ip.ip}:30102`
+  //     // 不知道什么原因，无法连接，可能是扫秒还未完成导致，所以延迟2秒再连接
+  //     setTimeout(() => {
+  //       this._ws.connectToDevice(ip);
+  //       let setIntervalID = setInterval(() => {
+  //         if (this.isConnected()) {
+  //           this.sendBuffer.setCarHeading = 0;
+  //           this.sendDataWS();
+  //           delete this.sendBuffer.setCarHeading;
+  //           clearInterval(setIntervalID);
+  //         }
+  //       })
+  //     }, 2000);
+  //   }
+  // }
 
   /**
    * 断开连接

@@ -442,14 +442,20 @@ class GalaxyRVR {
      * 连接设备
      * @param {number} id 设备的id
      */
-    connect(id) {
+    connect(ip) {
         if (this._ws) {
-            let ip = this.getDeviceInfo();
-            ip = `ws://${ip.ip}:30102`
             this._ws.connectToDevice(ip);
             this.sendDataWS();
         }
     }
+    // connect(id) {
+    //     if (this._ws) {
+    //         let ip = this.getDeviceInfo();
+    //         ip = `ws://${ip.ip}:30102`
+    //         this._ws.connectToDevice(ip);
+    //         this.sendDataWS();
+    //     }
+    // }
 
     /**
      * 断开连接
