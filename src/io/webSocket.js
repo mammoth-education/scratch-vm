@@ -5,13 +5,13 @@ class webSocket {
     this.socket = null;
     this._deviceName = null;
     this._info = null;
-    this._devicesWifiData = null;
+    this._staIp = null;
     this._webSocketObjList = [];
     this._manualDisconnect = false; //手动断开连接
     this._payload = null; //需要发送的数据
     this._onReceive = onReceive; //将接收到的数据进行转换
     this._receivedData = null; //接收到的数据
-    this._networks = []; //附近WiFi名称
+    this._networks = null; //附近WiFi名称
     this.autoConnect();
     // this._onSend();
     this._clickConnect = false;
@@ -43,6 +43,7 @@ class webSocket {
     this.DATA_SEND_FIELD = "DATA+";
     this.clear_after_send = false; //发送完数据后是否清除
     this._activeSockets = []; // 活跃的 WebSocket 连接
+    this._setWifiState = null;
   }
 
   setClearAfterSend(bool) {
@@ -263,10 +264,14 @@ class webSocket {
             console.log("Wifi修改成功！");
           }
           if (message.state && message.ip) {
-            this._devicesWifiData = {
+            this._staIp = {
               StaIp: message.ip,
             }
-            console.log("设备连接wifi成功！", this._devicesWifiData);
+            console.log("设备连接wifi成功！", this._staIp);
+          }
+          if (message.state && message.errors.length > 0) {
+            console.log("设置失败：", message.errors[0]);
+            this._setWifiState = message.errors[0];
           }
           if (message.state && message.networks) {
             this._networks = message.networks;
@@ -292,7 +297,9 @@ class webSocket {
     socket.onclose = (event) => {
       this._isConnected = false;
       this._isStarted = false;
-      this._networks = [];
+      this._networks = null;
+      this._setWifiState = null;
+      this._staIp = null;
       this._clickConnect = false;
       // if (event.code === 1000) {
       console.log('WebSocket 连接已关闭!!!!!!');
@@ -634,7 +641,7 @@ class webSocket {
       }
       // this.scan("192.168.4.1");
       // this.scan("192.168.100.1");
-      let ip = localStorage.getItem("ip");
+      let ip = localStorage.getItem("ip") ? localStorage.getItem("ip") : "192.168.4.1";
       this.scan(ip);
     }
   }
@@ -706,8 +713,8 @@ class webSocket {
 
   // Get WiFi IP
   getDeviceWifiIp = () => {
-    console.log("this._devicesWifiData", this._devicesWifiData)
-    return this._devicesWifiData;
+    console.log("this._staIp", this._staIp)
+    return this._staIp;
   }
 }
 

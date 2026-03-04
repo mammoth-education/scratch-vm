@@ -179,8 +179,8 @@ class GalaxyRVR {
                 case Sensor.IRObstacle:
                     i += 1;
                     let irValue = dataview.getUint8(i);
-                    let leftSensor = (irValue >> 0) & 0x01;
-                    let rightSensor = (irValue >> 1) & 0x01;
+                    let rightSensor = (irValue >> 0) & 0x01;
+                    let leftSensor = (irValue >> 1) & 0x01;
                     receiveBuffer["irObstacle"] = { left: leftSensor, right: rightSensor };
 
                     break;
