@@ -272,6 +272,7 @@ class webSocket {
           if (message.state && message.errors.length > 0) {
             console.log("设置失败：", message.errors[0]);
             this._setWifiState = message.errors[0];
+            this._staIp = null;
           }
           if (message.state && message.networks) {
             this._networks = message.networks;
@@ -668,6 +669,10 @@ class webSocket {
   setDeviceWifi = (data) => {
     if (this._isConnected) {
       console.log("setDeviceWifi", data)
+      this._setWifiState = null;
+      if (data.staSsid && data.staPassword) {
+        this._staIp = null;
+      }
       let newData = JSON.stringify(data);
       newData = this.SET_DEVICE_FIELD + newData;
       this.send(newData);
