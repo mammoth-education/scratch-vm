@@ -324,8 +324,7 @@ class GalaxyRVR {
     // 增加亮度
     increaseBrightness(value) {
         // 计算亮度增减的百分比
-        const change = (this.brightness * value) / 100;
-        const newBrightness = this.brightness + change;
+        const newBrightness = this.brightness + value;
 
         // 限制亮度在 0 到 100 范围内
         if (newBrightness > 100) {
@@ -344,9 +343,9 @@ class GalaxyRVR {
             this.sendBuffer.rgb = { r: 0, g: 0, b: 0 };
         }
         this.brightness = value;
-        let r = this.sendBuffer.rgb.r;
-        let g = this.sendBuffer.rgb.g;
-        let b = this.sendBuffer.rgb.b;
+        let r = this.color.r;
+        let g = this.color.g;
+        let b = this.color.b;
         r = Math.min(255, Math.max(0, r * this.brightness)); // 防止超出范围
         g = Math.min(255, Math.max(0, g * this.brightness));
         b = Math.min(255, Math.max(0, b * this.brightness));
