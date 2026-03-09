@@ -210,6 +210,8 @@ class webSocket {
     this.socket = socket;
     console.log('已连接设备：', url);
     const matchedDevice = this._scanedDevices.find(device => device.ip === ip); // 找到匹配的设备
+    const newVideo = `http://${url}:9000/mjpg`
+    matchedDevice.video = newVideo;
     this._info = matchedDevice;
     // 保存连接成功的IP
     const historyIp = JSON.parse(localStorage.getItem("historyIp"));
