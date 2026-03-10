@@ -311,14 +311,7 @@ class GalaxyRVR {
             rgb = { r, g, b };
         }
         this.color = { ...rgb };
-        const brightness = Math.max(0, Math.min(100, this.brightness)) / 100;
-        // const brightness = Math.pow(Math.max(0, Math.min(100, this.brightness)) / 100, 2);
-
-        this.sendBuffer.rgb = {
-            r: Math.round(rgb.r * brightness),
-            g: Math.round(rgb.g * brightness),
-            b: Math.round(rgb.b * brightness)
-        };
+        this.sendBuffer.rgb = this.color;
         this.sendDataWS();
     }
     // 增加亮度
@@ -343,13 +336,15 @@ class GalaxyRVR {
             this.sendBuffer.rgb = { r: 0, g: 0, b: 0 };
         }
         this.brightness = value;
+        const brightness = Math.max(0, Math.min(100, this.brightness)) / 100;
         let r = this.color.r;
         let g = this.color.g;
         let b = this.color.b;
-        r = Math.min(255, Math.max(0, r * this.brightness)); // 防止超出范围
-        g = Math.min(255, Math.max(0, g * this.brightness));
-        b = Math.min(255, Math.max(0, b * this.brightness));
-        this.setColor(r, g, b);
+        r = Math.round(Math.min(255, Math.max(0, r * brightness)));
+        g = Math.round(Math.min(255, Math.max(0, g * brightness)));
+        b = Math.round(Math.min(255, Math.max(0, b * brightness)));
+        this.sendBuffer.rgb = { r: r, g: g, b: b };
+        this.sendDataWS();
     }
     // 关闭灯条
     turnOffLightStrip() {
