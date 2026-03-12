@@ -17,7 +17,6 @@ class webSocket {
     this._clickConnect = false;
     this._historyWSObject = [];
     this._timeoutList = [];
-    this._CONNECTION_TIMEOUT_OUT = 10000;  // 连接超时时间
     this._scanWSObj = {};
     this._shouldStopScan = false; // 添加停止扫描标志
     this._isManualDisconnect = false; //是否手动断开连接
@@ -29,7 +28,6 @@ class webSocket {
     this._keepAliveInterval = null;
     this._isConnected = false; //是否连接
     this._isStarted = false; //是否开始发送数据
-    this._PING_PONG_SEND_INTERVAL = 500; // 心跳发送间隔
     this._isPingPongType = false;
     this._PING_PONG_TYPE_LIST = [
       "Zeus_Car",
@@ -38,12 +36,16 @@ class webSocket {
       "Nano Sloth",
     ];
     this._keepAliveTimeout = null;
-    this._PING_PONG_TIMEOUT = 2000;  // 心跳检测超时时间
     this.SET_DEVICE_FIELD = "SET+";
     this.DATA_SEND_FIELD = "DATA+";
     this.clear_after_send = false; //发送完数据后是否清除
     this._activeSockets = []; // 活跃的 WebSocket 连接
     this._setWifiState = null;
+    this._heartbeatTimer = null; // 心跳定时器
+    this._pongTimer = null; // Pong 响应定时器
+    this._pongTimeout = 5000; // 3秒没收到pong认为断开
+    this._heartbeatInterval = 5000; // 5秒发一次ping
+    this._waitingPong = false;
   }
 
   setClearAfterSend(bool) {
@@ -201,8 +203,10 @@ class webSocket {
     }
     if (this.socket) {
       console.log("socket已存在，关闭socket")
+      this.stopHeartbeat();
       this.socket.close();
       this.socket = null;
+      this._waitingPong = false;
     }
     this._clickConnect = true;
     // 连接新设备
@@ -233,16 +237,15 @@ class webSocket {
       this._runtime.emit(this._runtime.constructor.PERIPHERAL_CONNECTED);
       this._isStarted = true; // 开始发送数据
       this.start();
-      if (!this._isStarted) {
-        console.log("没有开始发送数据,开始发送ping");
-        this.keepAlive();
-      }
+      this.startHeartbeat();
     }, 0);
 
 
     // 当接收到服务器发送的消息时触发
     socket.onmessage = (event) => {
       let message = event.data;
+      // 心跳响应
+
       if (typeof (message) == "string" && message.substring(0, 4) != "pong") {
         try {
           // 拿DATA+后面的数据
@@ -289,7 +292,13 @@ class webSocket {
         } catch (error) {
           return;
         }
-      } else {
+      } else if (typeof (message) == "string" && message.substring(0, 4) === "pong") {
+        console.log("收到 pong");
+        this._waitingPong = false;
+        clearTimeout(this._pongTimer);
+        return;
+      }
+      else {
         // console.log('收到其他：', message);
         this._receivedData = this._onReceive(message);
         // console.log("收到的数据：", this._receivedData);
@@ -306,6 +315,7 @@ class webSocket {
       this._clickConnect = false;
       // if (event.code === 1000) {
       console.log('WebSocket 连接已关闭!!!!!!');
+      this.stopHeartbeat();
       // 修改block连接UI
       this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
       // 弹窗提示连接中断
@@ -313,7 +323,7 @@ class webSocket {
         message: `Lost connection to`,
         extensionId: this._extensionId
       });
-      if (this._manualDisconnect) {
+      if (!this._manualDisconnect) {
         this.reconnect();
       }
       // } else {
@@ -556,21 +566,105 @@ class webSocket {
     console.log('已手动停止扫描并关闭所有 WebSocket');
   }
 
-  // 配置长链接的心跳检测
-  keepAlive() {
-    clearInterval(this._keepAliveInterval);
-    this._keepAliveInterval = setInterval(() => {
-      if (this._isConnected && !this._isStarted) {
-        this.send("ping");
-        // console.log("ping, reconnectCount: ",);
-        // this._keepAliveTimeout = setTimeout(() => {
-        //   this.pingPongTimeOut();
-        // }, this._PING_PONG_TIMEOUT);
-      } else {
-        console.log("心跳检测断开连接");
-        clearInterval(this._keepAliveInterval);
+  // 心跳检测
+  startHeartbeat() {
+
+    this.stopHeartbeat();
+
+    this._waitingPong = false;
+
+    this._heartbeatTimer = setInterval(() => {
+
+      if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+        console.log("socket未连接，停止心跳");
+        this.stopHeartbeat();
+        return;
       }
-    }, this._PING_PONG_SEND_INTERVAL);
+
+      // 如果上一次 ping 还没收到 pong
+      if (this._waitingPong) {
+
+        console.log("pong超时，关闭连接");
+
+        if (this.socket) {
+          this.socket.close();
+        }
+
+        return;
+      }
+
+      try {
+
+        console.log("发送 ping");
+
+        this._waitingPong = true;
+
+        this.socket.send("ping");
+
+        // 启动 pong 超时检测
+        clearTimeout(this._pongTimer);
+
+        this._pongTimer = setTimeout(() => {
+
+          if (this._waitingPong) {
+
+            console.log("pong超时，关闭连接",this.socket);
+
+            if (this.socket) {
+              this.socket.close();
+              this._isConnected = false;
+              this._isStarted = false;
+              this._networks = null;
+              this._setWifiState = null;
+              this._staIp = null;
+              this._clickConnect = false;
+              this.socket = null;
+              // if (event.code === 1000) {
+              console.log('pong超时,WebSocket 连接已关闭!!!!!!');
+              this.stopHeartbeat();
+              // 修改block连接UI
+              this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
+              // 弹窗提示连接中断
+              this._runtime.emit(this._runtime.constructor.PERIPHERAL_CONNECTION_LOST_ERROR, {
+                message: `Lost connection to`,
+                extensionId: this._extensionId
+              });
+              if (!this._manualDisconnect) {
+                this.reconnect();
+              }
+            }
+
+          }
+
+        }, this._pongTimeout);
+
+      } catch (err) {
+
+        console.log("ping发送失败", err);
+
+      }
+
+    }, this._heartbeatInterval);
+  }
+
+  stopHeartbeat() {
+
+    clearInterval(this._heartbeatTimer);
+    clearTimeout(this._pongTimer);
+
+    this._heartbeatTimer = null;
+    this._pongTimer = null;
+    this._waitingPong = false;
+  }
+
+  // 停止心跳检测
+  stopHeartbeat() {
+
+    clearInterval(this._heartbeatTimer);
+    clearTimeout(this._pongTimer);
+
+    this._heartbeatTimer = null;
+    this._pongTimer = null;
   }
 
   // 给数据添加长度校准验证
