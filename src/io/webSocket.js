@@ -43,9 +43,13 @@ class webSocket {
     this._setWifiState = null;
     this._heartbeatTimer = null; // 心跳定时器
     this._pongTimer = null; // Pong 响应定时器
-    this._pongTimeout = 5000; // 3秒没收到pong认为断开
+    this._pongTimeout = 5000; // 5秒没收到pong认为断开
     this._heartbeatInterval = 5000; // 5秒发一次ping
     this._waitingPong = false;
+    this._pingTimer = null;
+    this._pingTimeout = 1000; // 1.5秒发送一次ping
+    this._dataReceiveState = false; //数据接收状态
+    this._pongTime = null;
   }
 
   setClearAfterSend(bool) {
@@ -79,6 +83,7 @@ class webSocket {
       // 当连接建立时触发
       socket.onopen = () => {
         console.log('WebSocket 连接已建立');
+        this.sendPing(socket); // 发送ping
         clearTimeout(timerId);
         resolve();
       };
@@ -184,6 +189,7 @@ class webSocket {
   }
   // 连接设备
   connectToDevice(url) {
+    this.stopSendPing();
     console.log("开始连接设备：", url, this._scanSuccessList);
     // let ip = url.split("//")[1].split(":")[0];
     let ip = url;
@@ -204,6 +210,7 @@ class webSocket {
     if (this.socket) {
       console.log("socket已存在，关闭socket")
       this.stopHeartbeat();
+      this.stopSendPing();
       this.socket.close();
       this.socket = null;
       this._waitingPong = false;
@@ -244,7 +251,8 @@ class webSocket {
     // 当接收到服务器发送的消息时触发
     socket.onmessage = (event) => {
       let message = event.data;
-      // 心跳响应
+      this._dataReceiveState = true;
+      this._pingTimer = null;
 
       if (typeof (message) == "string" && message.substring(0, 4) != "pong") {
         try {
@@ -316,6 +324,7 @@ class webSocket {
       // if (event.code === 1000) {
       console.log('WebSocket 连接已关闭!!!!!!');
       this.stopHeartbeat();
+      this.stopSendPing();
       // 修改block连接UI
       this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
       // 弹窗提示连接中断
@@ -335,6 +344,7 @@ class webSocket {
     socket.onerror = (error) => {
       this._isConnected = false;
       this._isStarted = false;
+      this.stopSendPing();
       console.error('WebSocket 错误：', error);
     };
   }
@@ -344,14 +354,6 @@ class webSocket {
      */
   isConnected = () => {
     return this._isConnected;
-  }
-
-  pingPongTimeOut() {
-    console.warn("ping pong timeout");
-    if (this._manualDisconnect || this._reconnectCount == 3) {
-      return;
-    }
-    this.reconnect();
   }
 
   // 重新连接
@@ -578,6 +580,7 @@ class webSocket {
       if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
         console.log("socket未连接，停止心跳");
         this.stopHeartbeat();
+        this.stopSendPing();
         return;
       }
 
@@ -608,7 +611,7 @@ class webSocket {
 
           if (this._waitingPong) {
 
-            console.log("pong超时，关闭连接",this.socket);
+            console.log("pong超时，关闭连接", this.socket);
 
             if (this.socket) {
               this.socket.close();
@@ -622,6 +625,7 @@ class webSocket {
               // if (event.code === 1000) {
               console.log('pong超时,WebSocket 连接已关闭!!!!!!');
               this.stopHeartbeat();
+              this.stopSendPing();
               // 修改block连接UI
               this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
               // 弹窗提示连接中断
@@ -647,6 +651,7 @@ class webSocket {
     }, this._heartbeatInterval);
   }
 
+  // 停止心跳检测
   stopHeartbeat() {
 
     clearInterval(this._heartbeatTimer);
@@ -657,16 +662,22 @@ class webSocket {
     this._waitingPong = false;
   }
 
-  // 停止心跳检测
-  stopHeartbeat() {
-
-    clearInterval(this._heartbeatTimer);
-    clearTimeout(this._pongTimer);
-
-    this._heartbeatTimer = null;
-    this._pongTimer = null;
+  // 发送ping
+  sendPing(socket) {
+    if (this._pingTimer) return;
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      this._pingTimer = setInterval(() => {
+        socket.send("ping");
+      }, this._pingTimeout);
+    }
   }
 
+  stopSendPing() {
+    if (this._pingTimer) {
+      clearInterval(this._pingTimer);
+      this._pingTimer = null;
+    }
+  }
   // 给数据添加长度校准验证
   addLengthCheck() {
     // 长度校验， 长度预设4位0开头的数字字符串。
@@ -754,6 +765,7 @@ class webSocket {
       this._isStarted = false;
       this._manualDisconnect = true;
       this._reconnectCount = 0;
+      this.stopSendPing();
       clearInterval(this._sendTimer);
       clearInterval(this._keepAliveTimeout);
       this._runtime.emit(this._runtime.constructor.PERIPHERAL_DISCONNECTED);
