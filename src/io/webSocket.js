@@ -44,12 +44,11 @@ class webSocket {
     this._heartbeatTimer = null; // 心跳定时器
     this._pongTimer = null; // Pong 响应定时器
     this._pongTimeout = 5000; // 5秒没收到pong认为断开
-    this._heartbeatInterval = 5000; // 5秒发一次ping
+    this._heartbeatInterval = 1000; // 1秒发一次ping
     this._waitingPong = false;
     this._pingTimer = null;
     this._pingTimeout = 1000; // 1.5秒发送一次ping
     this._dataReceiveState = false; //数据接收状态
-    this._pongTime = null;
   }
 
   setClearAfterSend(bool) {
@@ -584,15 +583,8 @@ class webSocket {
         return;
       }
 
-      // 如果上一次 ping 还没收到 pong
+      // 如果上一次 ping 还没收到 pong，跳过本次 ping，等待超时或响应
       if (this._waitingPong) {
-
-        console.log("pong超时，关闭连接");
-
-        if (this.socket) {
-          this.socket.close();
-        }
-
         return;
       }
 
@@ -669,6 +661,8 @@ class webSocket {
       this._pingTimer = setInterval(() => {
         socket.send("ping");
       }, this._pingTimeout);
+    } else {
+      this.stopSendPing();
     }
   }
 
