@@ -1431,9 +1431,9 @@ class GalaxyRVRBlocks {
         let irObstacle = this._peripheral.irObstacle;
         if (!irObstacle) return false;
         if (args.AVOIDANCE === "left") {
-            return irObstacle.left === 0 ? true : false;
+            return irObstacle.left === 1 ? true : false;
         } else {
-            return irObstacle.right === 0 ? true : false;
+            return irObstacle.right === 1 ? true : false;
         }
     }
 
@@ -1443,15 +1443,15 @@ class GalaxyRVRBlocks {
             setInterval(() => {
                 let irObstacle = this._peripheral.irObstacle;
                 if (args.AVOIDANCE === "left") {
-                    if (irObstacle.left === 0 && args.ISNOT === "is") {
+                    if (irObstacle.left === 1 && args.ISNOT === "is") {
                         resolve();
-                    } else if (irObstacle.left === 1 && args.ISNOT === "is not") {
+                    } else if (irObstacle.left === 0 && args.ISNOT === "is not") {
                         resolve();
                     }
                 } else {
-                    if (irObstacle.right === 0 && args.ISNOT === "is") {
+                    if (irObstacle.right === 1 && args.ISNOT === "is") {
                         resolve();
-                    } else if (irObstacle.right === 1 && args.ISNOT === "is not") {
+                    } else if (irObstacle.right === 0 && args.ISNOT === "is not") {
                         resolve();
                     }
                 }
